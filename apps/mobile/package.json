@@ -1,0 +1,36 @@
+{
+  "name": "@hafi/mobile",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "node scripts/sync-api-url.mjs && expo start --lan -c",
+    "android": "node scripts/sync-api-url.mjs && expo start --android",
+    "ios": "node scripts/sync-api-url.mjs && expo start --ios",
+    "postinstall": "node scripts/create-assets.mjs"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^15.0.3",
+    "@react-navigation/bottom-tabs": "^7.2.0",
+    "@react-navigation/native": "^7.0.14",
+    "@react-navigation/native-stack": "^7.2.0",
+    "expo": "~54.0.0",
+    "expo-constants": "~18.0.13",
+    "expo-image": "~3.0.11",
+    "expo-linear-gradient": "~15.0.8",
+    "expo-secure-store": "~15.0.8",
+    "expo-status-bar": "~3.0.9",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-native": "0.81.5",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.26.0",
+    "@types/react": "~19.1.10",
+    "babel-preset-expo": "~54.0.0",
+    "dotenv": "^16.4.7",
+    "typescript": "~5.9.2"
+  }
+}

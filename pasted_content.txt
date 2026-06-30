@@ -1,0 +1,134 @@
+PROMPT 3 — Booking System (Core Booksy Feature)
+Build a complete appointment booking system for a beauty & wellness 
+marketplace app. It must work in real-time and feel as smooth as Calendly 
+meets Booksy.
+
+BOOKING ENGINE:
+- Providers set their weekly availability (working hours per day)
+- Providers mark holidays, breaks, and blocked slots
+- Customers see a real-time calendar showing only open slots
+- Slot duration is based on the selected service duration
+- Buffer time between appointments (configurable per provider)
+- Group bookings (multiple clients, e.g. bridal party)
+- Waitlist feature when fully booked
+
+BOOKING FLOW (Customer):
+1. Search → Select Provider → View Profile & Portfolio
+2. Select Service (with price, duration, description)
+3. Pick Date → Pick Time Slot (live updated)
+4. Add special notes/requests
+5. Deposit or full payment via Stripe
+6. Confirmation screen with calendar export (Google Cal / iCal)
+
+REMINDERS:
+- 24h reminder (push + SMS)
+- 2h reminder (push)
+- Post-appointment review prompt (push, 1h after slot end)
+
+CANCELLATION & RESCHEDULE:
+- Free cancellation window (configurable: e.g. 24h before)
+- Late cancellation fee (held from deposit)
+- One free reschedule per booking; second reschedule costs a small fee
+- No-show protection: provider marks no-show, deposit kept
+
+PROVIDER DASHBOARD:
+- Daily/weekly/monthly calendar view
+- Quick block time button
+- Revenue per day chart
+- Client list with visit history
+
+Build this using React Native with react-native-calendars, Stripe SDK, 
+and a clean white + soft purple UI. The calendar should have smooth 
+horizontal scrolling between weeks. Time slots should appear as pill-shaped 
+buttons — green for available, grey for taken.
+
+PROMPT 4 — Ecstatic UI Design System
+Create a complete UI design system and component library for a beauty & 
+wellness marketplace mobile app (React Native). The app is called [YourAppName].
+
+BRAND PERSONALITY: Luxurious, playful, warm, trustworthy, modern.
+
+COLOR PALETTE:
+- Primary: Deep Violet #6C3FC5
+- Secondary: Gold/Amber #F5A623
+- Accent: Soft Rose #FF7EB3
+- Background: Off-white #FAF9FF
+- Surface: White #FFFFFF
+- Text Primary: #1A1A2E
+- Text Secondary: #6B6B8A
+- Success: #2ECC71, Error: #E74C3C
+
+TYPOGRAPHY:
+- Headings: Poppins Bold
+- Body: Inter Regular/Medium
+- Prices/Numbers: Space Grotesk Bold
+
+COMPONENTS TO BUILD:
+1. BottomNavBar (5 tabs: Home, Explore, Marketplace, Bookings, Profile)
+2. ServiceCard (provider photo, name, rating, price, distance, book button)
+3. MarketplaceCard (product image, title, price, condition badge, heart icon)
+4. BookingTimePill (time slot pill: available = violet, taken = grey strikethrough)
+5. ReviewCard (avatar, stars, date, text, photo thumbnails)
+6. ProviderProfileHeader (cover photo, avatar, name, verified badge, stats row)
+7. OfferBottomSheet (Vinted-style price negotiation modal)
+8. NotificationBell (with animated red badge counter)
+9. OnboardingSlides (3 animated slides for first-time users)
+10. EmptyState illustrations (no bookings, no listings, no results)
+
+ANIMATIONS:
+- All cards: scale bounce on press (react-native-reanimated)
+- Tab switch: smooth slide transition
+- Booking confirmation: confetti burst animation
+- Marketplace heart: pulse animation on save
+- Loading: shimmer skeleton screens (no spinners)
+
+Give me full working React Native code for all 10 components with 
+StyleSheet, proper spacing system (4px grid), and dark mode support.
+
+PROMPT 5 — Admin Panel & Analytics
+Build a web-based Admin Panel for a beauty booking + marketplace app 
+using Next.js 14 with App Router and Tailwind CSS.
+
+ADMIN PANEL SECTIONS:
+
+DASHBOARD:
+- Total bookings today / this week / this month (with trend arrows)
+- Total marketplace transactions (GMV)
+- New users registered (chart: last 30 days)
+- Revenue from commissions (line chart)
+- Top 10 providers by bookings
+- Top 10 marketplace sellers by sales
+
+USER MANAGEMENT:
+- Table: all users (search, filter by role, status, join date)
+- User profile view: bookings history, marketplace activity, flags
+- Suspend / ban / verify user actions
+- Identity verification queue (approve/reject seller ID uploads)
+
+PROVIDER MANAGEMENT:
+- Approve new provider applications
+- View provider analytics (bookings, revenue, reviews)
+- Manage featured/promoted providers
+- Handle provider disputes
+
+MARKETPLACE MODERATION:
+- Review flagged listings
+- Remove listings that violate policy
+- Manage categories and allowed product types
+- View all active listings with seller info
+
+FINANCIALS:
+- Commission rate settings per category
+- Payout schedule management
+- Dispute/refund handling
+- Export reports (CSV/PDF)
+
+SETTINGS:
+- App-wide notification templates (SMS, email, push)
+- Cancellation policy rules
+- Platform fee configuration
+- Feature flags (enable/disable modules)
+
+Use shadcn/ui components, Chart.js for graphs, and a dark sidebar layout 
+with violet accent. Make it feel like a premium SaaS dashboard — clean, 
+data-rich, and fast.

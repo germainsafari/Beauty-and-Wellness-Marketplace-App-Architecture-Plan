@@ -1,0 +1,78 @@
+import Constants from "expo-constants";
+import * as SecureStore from "expo-secure-store";
+
+const TOKEN_KEY = "hafi_token";
+
+export function getApiUrl(): string {
+  const url =
+    (Constants.expoConfig?.extra?.apiUrl as string | undefined) ||
+    process.env.EXPO_PUBLIC_API_URL ||
+    "http://localhost:3001";
+  return url.replace(/\/$/, "");
+}
+
+export async function getToken(): Promise<string | null> {
+  try {
+    return await SecureStore.getItemAsync(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export async function setToken(token: string): Promise<void> {
+  await SecureStore.setItemAsync(TOKEN_KEY, token);
+}
+
+export async function clearToken(): Promise<void> {
+  await SecureStore.deleteItemAsync(TOKEN_KEY);
+}
+
+type TrpcResult<T> = { result: { data: T } };
+type TrpcError = { error: { message?: string; json?: { message?: string } } };
+
+function parseTrpcError(json: TrpcError): string {
+  return json.error?.message || json.error?.json?.message || "Request failed";
+}
+
+function networkErrorMessage(base: string): string {
+  return `Cannot reach API at ${base}. Ensure npm run api is running and your phone is on the same Wi‑Fi.`;
+}
+
+export async function trpcCall<T>(
+  path: string,
+  input?: unknown,
+  method: "query" | "mutation" = "query"
+): Promise<T> {
+  const base = getApiUrl();
+  const token = await getToken();
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  try {
+    if (method === "query") {
+      const wrapped = { json: input ?? null };
+      const inputParam = `?input=${encodeURIComponent(JSON.stringify(wrapped))}`;
+      const res = await fetch(`${base}/trpc/${path}${inputParam}`, { headers });
+      const json = (await res.json()) as TrpcResult<T> | TrpcError;
+      if ("error" in json) throw new Error(parseTrpcError(json));
+      return json.result.data;
+    }
+
+    const res = await fetch(`${base}/trpc/${path}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(input ?? null),
+    });
+    const json = (await res.json()) as TrpcResult<T> | TrpcError;
+    if ("error" in json) throw new Error(parseTrpcError(json));
+    return json.result.data;
+  } catch (e) {
+    if (e instanceof TypeError && String(e.message).includes("Network request failed")) {
+      throw new Error(networkErrorMessage(base));
+    }
+    throw e;
+  }
+}

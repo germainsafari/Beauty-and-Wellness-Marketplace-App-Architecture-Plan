@@ -1,0 +1,31 @@
+{
+  "name": "hafi",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "api": "npm run dev --workspace=@hafi/api",
+    "api:start": "npm run start --workspace=@hafi/api",
+    "web": "npm run dev --workspace=@hafi/web",
+    "web:build": "npm run build --workspace=@hafi/web",
+    "mobile": "npm run start --workspace=@hafi/mobile",
+    "db:push": "npm run db:push --workspace=@hafi/api",
+    "db:seed": "npm run db:seed --workspace=@hafi/api",
+    "db:seed:demo": "npm run db:seed:demo --workspace=@hafi/api",
+    "dev": "concurrently -n api,web \"npm run api\" \"npm run web\"",
+    "dev:all": "concurrently -n api,web,mobile \"npm run api\" \"npm run web\" \"npm run mobile\""
+  },
+  "dependencies": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "overrides": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  }
+}
