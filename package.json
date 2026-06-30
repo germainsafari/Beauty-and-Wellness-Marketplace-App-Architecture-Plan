@@ -10,6 +10,7 @@
     "api:start": "npm run start --workspace=@hafi/api",
     "web": "npm run dev --workspace=@hafi/web",
     "web:build": "npm run build --workspace=@hafi/web",
+    "web:start": "npm run start --workspace=@hafi/web",
     "vercel-build": "npm run web:build",
     "mobile": "npm run start --workspace=@hafi/mobile",
     "db:push": "npm run db:push --workspace=@hafi/api",

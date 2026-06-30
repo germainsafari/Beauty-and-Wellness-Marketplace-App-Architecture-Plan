@@ -3,6 +3,20 @@
 
 services:
   - type: web
+    name: hafi-web
+    runtime: node
+    region: frankfurt
+    plan: free
+    rootDir: .
+    buildCommand: npm install && npm run web:build
+    startCommand: npm run web:start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: VITE_API_URL
+        sync: false
+
+  - type: web
     name: hafi-api
     runtime: node
     region: frankfurt
