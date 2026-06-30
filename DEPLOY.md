@@ -50,12 +50,19 @@ Render sets `PORT` automatically — do not hardcode it.
 
 1. Push repo to GitHub.
 2. Go to [Vercel](https://vercel.com) → **Add New Project** → import repo.
-3. Vercel auto-detects settings from `vercel.json`.
-4. Add environment variable:
+3. **Project settings** (must match `vercel.json` at repo root):
+   - **Root Directory:** `.` (leave empty / repo root — not `apps/web`)
+   - **Framework Preset:** Other (or Vite — `vercel.json` overrides build)
+   - **Build Command:** `npm run web:build` (from `vercel.json`)
+   - **Output Directory:** `apps/web/dist`
+   - **Install Command:** `npm install --include=dev --legacy-peer-deps`
+4. Add environment variable (required for production API calls):
 
 ```
 VITE_API_URL=https://hafi-api.onrender.com
 ```
+
+Replace with your live Render API URL (no trailing slash).
 
 5. Deploy.
 
