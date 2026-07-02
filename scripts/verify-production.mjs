@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 
 const checks = [
   ["API typecheck", "npx", ["tsc", "-p", "apps/api/tsconfig.json", "--noEmit"]],
+  ["Web typecheck", "npx", ["tsc", "-p", "apps/web/tsconfig.json", "--noEmit"]],
   ["Web production build", "npm", ["run", "web:build"]],
   ["Mobile typecheck", "npx", ["tsc", "-p", "apps/mobile/tsconfig.json", "--noEmit"]],
 ];

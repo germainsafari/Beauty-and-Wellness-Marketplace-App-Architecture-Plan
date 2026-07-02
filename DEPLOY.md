@@ -175,9 +175,13 @@ Demo accounts:
 
 Extra post-deploy checks:
 
-- [ ] Admin demo login opens `/admin`
-- [ ] Socket.io connects on the web messages screen
-- [ ] Demo checkout creates an order and payment
-- [ ] Merchant boost moves a listing above normal listings
-- [ ] Verification submission appears in the admin queue
-- [ ] Expo Go opens with `EXPO_PUBLIC_API_URL` pointed to the reachable API
+- [ ] Admin demo login opens `/admin` (Overview / Verification / Users / Listings / Bookings / Orders / Audit log tabs)
+- [ ] Socket.io connects on the web messages screen ("Realtime online") and a message from the other party appears without refresh
+- [ ] Demo checkout creates an order and payment; MoMo/Airtel checkout goes to `processing` and settles via `commerce.simulatePaymentStatus`
+- [ ] Bundle & save on an Amara listing quotes −10% and "Buy bundle" completes
+- [ ] Merchant boost moves a listing above normal listings (HOT badge)
+- [ ] Verification: ID photo upload from profile appears in the admin queue; approval flips the verified badge
+- [ ] Discover: district chips filter providers; map view shows pins (Leaflet/OSM)
+- [ ] Loyalty: redeem 50 pts credits RWF 500 to the wallet
+- [ ] Share buttons open WhatsApp / X with the listing link
+- [ ] Expo Go opens with `EXPO_PUBLIC_API_URL` pointed to the reachable API; push tokens register (physical device)

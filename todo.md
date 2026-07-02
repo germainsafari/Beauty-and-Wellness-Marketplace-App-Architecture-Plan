@@ -44,16 +44,21 @@
 - [x] Empty states with icons for all data-less views
 - [x] Auth-gated pages with Sign In CTAs
 
-## Pending / Future
-- [ ] Home dashboard (post-login): featured listings, upcoming bookings, loyalty points
-- [ ] Real-time chat with WebSockets (Socket.io)
-- [ ] Push notifications (service worker)
-- [ ] Stripe / MTN MoMo payment integration
-- [ ] Identity verification flow (ID upload)
-- [ ] Listing Bump paid feature
-- [ ] Bundle discount logic (2+ items from same seller)
-- [ ] Admin panel UI (/admin route)
+## MVP features (completed 2026-07-02)
+- [x] Home dashboard (post-login): featured listings, categories, loyalty points
+- [x] Real-time chat with WebSockets (Socket.io) — web + mobile, typing + read receipts
+- [x] Push notifications — Expo push delivery, preference-aware, dead-token auto-disable
+- [x] Payment intents: demo instant + MTN MoMo / Airtel Money / Stripe simulated (real provider APIs pending)
+- [x] Identity verification flow (ID photo upload → admin review queue → verified badge)
+- [x] Listing Boost paid feature (RWF 1,000/day, ranks first, auto-expiry)
+- [x] Bundle discount logic (same-seller rule, quoted + applied at checkout)
+- [x] Admin panel UI (/admin: overview, verification, users, listings, bookings, orders, audit log)
+- [x] Near Me: geolocation, Kigali district filters, Leaflet map (web), Open-in-Maps (mobile)
+- [x] Loyalty points: earn on bookings/orders + redeem to wallet (1 pt = RWF 10)
+- [x] Share listing to WhatsApp / X / copy link / native share
+
+## Future
+- [ ] Real MTN MoMo / Airtel / Stripe API integration + webhooks (simulate via commerce.simulatePaymentStatus today)
 - [ ] Provider onboarding flow
-- [ ] Google Maps "Near Me" listings
-- [ ] Loyalty points system
-- [ ] Share listing to Instagram/WhatsApp
+- [ ] Web push (service worker) — mobile push works via Expo
+- [ ] Loyalty redemption at checkout (currently redeems to wallet credit)

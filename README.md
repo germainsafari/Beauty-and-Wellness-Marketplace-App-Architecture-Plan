@@ -40,7 +40,27 @@ Or API + web: `npm run dev`
 - Run `npm run mobile` in an **interactive terminal** to see the QR code
 - `:8081` in browser = manifest JSON (normal, not the UI)
 
+## Feature status (MVP)
+
+| Feature | API | Web | Mobile |
+|---------|-----|-----|--------|
+| Admin console (tabs, moderation, audit log) | ✅ | ✅ | — |
+| Post-login home dashboard | ✅ | ✅ | ✅ |
+| Real-time chat (Socket.io, typing, read receipts) | ✅ | ✅ | ✅ |
+| Push notifications (Expo push, auto-disable dead tokens) | ✅ | bell + prefs | ✅ |
+| Payments (demo instant; MoMo/Airtel/Stripe simulated intents) | ✅ | ✅ | ✅ |
+| Identity verification (photo upload → admin review) | ✅ | ✅ | ✅ |
+| Boost listing (paid, ranked first, auto-expiry) | ✅ | ✅ | ✅ |
+| Bundle discounts (same-seller, applied at checkout) | ✅ | ✅ | rule editor |
+| Near Me (geolocation, Kigali districts, Leaflet map) | ✅ | ✅ | ✅ |
+| Loyalty points (earn + redeem to wallet) | ✅ | ✅ | ✅ |
+| Social sharing (WhatsApp / X / copy / native) | — | ✅ | ✅ |
+| i18n (EN / RW / FR / SW) | ✅ | ✅ | ✅ |
+
+Demo sign-in is phone-only. Accounts: admin `+250780000000`, clients `+250780000002` / `+250780000004`, merchants `+250780000001` / `+250780000003` — or use the one-tap demo buttons on the sign-in page.
+
 ## Deploy
 
+- **Monolith** → one Render service serving web + API (see `DEPLOY.md` §0)
 - **API** → Render (`render.yaml`)
 - **Web** → Vercel (`vercel.json`, set `VITE_API_URL`)
