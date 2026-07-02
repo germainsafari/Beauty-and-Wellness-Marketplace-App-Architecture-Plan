@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { Heart, MapPin } from "lucide-react";
-import { formatPrice } from "../lib/api";
+import { formatPrice, resolveUploadUrl } from "../lib/api";
 
 export type ListingCardItem = {
   id: number;
@@ -36,7 +36,7 @@ export default function ListingCard({ item, isFavorite, onToggleFavorite, compac
       <div className={`relative bg-gradient-to-br from-purple-50 to-violet-50 overflow-hidden ${compact ? "aspect-square" : "aspect-[3/4]"}`}>
         {item.images?.[0] ? (
           <img
-            src={item.images[0]}
+            src={resolveUploadUrl(item.images[0])}
             alt=""
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
           />

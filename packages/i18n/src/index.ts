@@ -1,7 +1,7 @@
-import { en, type TranslationKey } from "./locales/en.js";
-import { rw } from "./locales/rw.js";
-import { fr } from "./locales/fr.js";
-import { sw } from "./locales/sw.js";
+import { en, type TranslationKey } from "./locales/en";
+import { rw } from "./locales/rw";
+import { fr } from "./locales/fr";
+import { sw } from "./locales/sw";
 
 export type Locale = "en" | "rw" | "fr" | "sw";
 

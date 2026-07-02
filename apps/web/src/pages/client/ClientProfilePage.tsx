@@ -13,6 +13,7 @@ import {
 import { useApp } from "../../context/AppContext";
 import { DEMO_DOC_URLS } from "../../lib/onboarding";
 import { formatPrice, trpcCall } from "../../lib/api";
+import DocumentUpload, { resolveUploadUrl } from "../../components/DocumentUpload";
 
 type Section = "verification" | "loyalty" | "payments" | "notifications" | "orders" | "help";
 
@@ -22,6 +23,11 @@ const PAYMENT_OPTIONS = [
   { id: "airtel_money", label: "Airtel Money", desc: "Airtel mobile money" },
   { id: "stripe", label: "Card (Stripe)", desc: "Visa / Mastercard" },
 ] as const;
+
+const REDEEM_PRESETS = [50, 100, 200] as const;
+const POINT_VALUE_RWF = 10;
+
+type NotificationPrefs = { pushEnabled: boolean; emailEnabled: boolean; smsEnabled: boolean };
 
 export default function ClientProfilePage() {
   const { user, logout, switchRole } = useApp();
@@ -37,6 +43,12 @@ export default function ClientProfilePage() {
   const [defaultPayment, setDefaultPayment] = useState("demo");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [prefs, setPrefs] = useState<NotificationPrefs>({ pushEnabled: true, emailEnabled: true, smsEnabled: false });
+  const [prefsSaved, setPrefsSaved] = useState(false);
+  const [redeemCustom, setRedeemCustom] = useState("");
+  const [redeeming, setRedeeming] = useState(false);
+  const [redeemResult, setRedeemResult] = useState<{ creditedAmount: string | number; walletBalance: string | number } | null>(null);
+  const [redeemError, setRedeemError] = useState("");
 
   const load = () => {
     trpcCall<any[]>("verification.mine").then(setRequests).catch(() => {});
@@ -46,8 +58,11 @@ export default function ClientProfilePage() {
     trpcCall<any[]>("profile.purchaseHistory").then(setOrders).catch(() => {});
     trpcCall<any[]>("profile.paymentHistory").then(setPayments).catch(() => {});
     trpcCall<any[]>("help.topics").then(setHelpTopics).catch(() => {});
-    trpcCall<{ defaultPaymentProvider: string }>("profile.summary")
-      .then((s) => setDefaultPayment(s.defaultPaymentProvider))
+    trpcCall<{ defaultPaymentProvider: string; preferences: NotificationPrefs }>("profile.summary")
+      .then((s) => {
+        setDefaultPayment(s.defaultPaymentProvider);
+        if (s.preferences) setPrefs(s.preferences);
+      })
       .catch(() => {});
   };
 
@@ -79,6 +94,56 @@ export default function ClientProfilePage() {
     await trpcCall("notifications.markAllRead", {}, "mutation");
     load();
     setMessage("All notifications marked as read.");
+  };
+
+  const redeem = async (points: number) => {
+    setRedeemError("");
+    setRedeemResult(null);
+    if (!Number.isInteger(points) || points < 50) {
+      setRedeemError("Redeem at least 50 points (whole numbers only).");
+      return;
+    }
+    if (points > wallet.loyaltyPoints) {
+      setRedeemError(`You only have ${wallet.loyaltyPoints} points.`);
+      return;
+    }
+    setRedeeming(true);
+    try {
+      const result = await trpcCall<{
+        loyaltyPoints: number;
+        walletBalance: string | number;
+        redeemedPoints: number;
+        creditedAmount: string | number;
+      }>("commerce.redeemPoints", { points }, "mutation");
+      setWallet({ balance: String(result.walletBalance), loyaltyPoints: result.loyaltyPoints });
+      setRedeemResult({ creditedAmount: result.creditedAmount, walletBalance: result.walletBalance });
+      setRedeemCustom("");
+      trpcCall<any[]>("profile.loyaltyActivity").then(setLedger).catch(() => {});
+    } catch (e) {
+      setRedeemError(e instanceof Error ? e.message : "Could not redeem points.");
+    } finally {
+      setRedeeming(false);
+    }
+  };
+
+  const togglePref = async (key: keyof NotificationPrefs) => {
+    const previous = prefs;
+    const next = { ...prefs, [key]: !prefs[key] };
+    setPrefs(next); // optimistic
+    setPrefsSaved(false);
+    try {
+      const res = await trpcCall<{ success: boolean; preferences: NotificationPrefs }>(
+        "profile.updatePreferences",
+        { [key]: next[key] },
+        "mutation"
+      );
+      setPrefs(res.preferences);
+      setPrefsSaved(true);
+      setTimeout(() => setPrefsSaved(false), 2500);
+    } catch {
+      setPrefs(previous); // roll back on failure
+      setError("Could not save notification preferences.");
+    }
   };
 
   return (
@@ -123,39 +188,60 @@ export default function ClientProfilePage() {
         open={open === "verification"}
         onToggle={() => toggle("verification")}
       >
-        <p className="text-xs text-gray-500 mb-3">Upload a secure document URL for the MVP demo (HTTPS required).</p>
-        <div className="flex flex-wrap gap-2 mb-3">
-          {DEMO_DOC_URLS.map((d) => (
-            <button
-              key={d.url}
-              type="button"
-              onClick={() => setDocUrl(d.url)}
-              className="text-xs bg-purple-50 text-hafi-purple font-semibold px-3 py-1.5 rounded-full hover:bg-purple-100"
-            >
-              {d.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-2">
-          <input
-            value={docUrl}
-            onChange={(e) => setDocUrl(e.target.value)}
-            placeholder="https://your-secure-document-url..."
-            className="flex-1 border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-hafi-purple"
-          />
-          <button
-            onClick={submitVerification}
-            disabled={!docUrl.startsWith("https://")}
-            className="bg-hafi-purple text-white rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-50"
-          >
-            Submit
-          </button>
-        </div>
+        <p className="text-xs text-gray-500 mb-3">Upload a photo or PDF of your national ID (max 2MB). Admin reviews within 24–48 hours.</p>
+        <DocumentUpload
+          documentTypes={[{ value: "national_id", label: "National ID" }]}
+          onSubmitted={load}
+        />
+
+        <details className="mt-4 group">
+          <summary className="text-xs font-bold text-gray-500 cursor-pointer list-none flex items-center gap-1">
+            <ChevronDown size={14} className="group-open:rotate-180 transition-transform" />
+            Or paste a secure document URL instead
+          </summary>
+          <div className="mt-3">
+            <div className="flex flex-wrap gap-2 mb-3">
+              {DEMO_DOC_URLS.map((d) => (
+                <button
+                  key={d.url}
+                  type="button"
+                  onClick={() => setDocUrl(d.url)}
+                  className="text-xs bg-purple-50 text-hafi-purple font-semibold px-3 py-1.5 rounded-full hover:bg-purple-100"
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                value={docUrl}
+                onChange={(e) => setDocUrl(e.target.value)}
+                placeholder="https://your-secure-document-url..."
+                className="flex-1 border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-hafi-purple"
+              />
+              <button
+                onClick={submitVerification}
+                disabled={!docUrl.startsWith("https://")}
+                className="bg-hafi-purple text-white rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-50"
+              >
+                Submit
+              </button>
+            </div>
+          </div>
+        </details>
+
         {requests[0] && (
           <p className="text-xs mt-3 capitalize">
             Latest status: <strong className="text-hafi-purple">{requests[0].status}</strong>
             {requests[0].documentUrl && (
-              <span className="text-gray-400 block truncate mt-1">Doc: {requests[0].documentUrl}</span>
+              <a
+                href={resolveUploadUrl(requests[0].documentUrl)}
+                target="_blank"
+                rel="noreferrer"
+                className="text-hafi-purple underline block truncate mt-1 normal-case"
+              >
+                View submitted document
+              </a>
             )}
           </p>
         )}
@@ -164,16 +250,71 @@ export default function ClientProfilePage() {
       {/* Loyalty */}
       <ProfileSection
         icon={<Sparkles size={18} />}
-        title="Recent loyalty activity"
+        title="Loyalty & rewards"
         open={open === "loyalty"}
         onToggle={() => toggle("loyalty")}
         badge={`${wallet.loyaltyPoints} pts total`}
       >
+        <div className="rounded-2xl bg-gradient-to-br from-hafi-purple to-hafi-light text-white p-5 mb-4">
+          <p className="text-xs uppercase tracking-wide text-purple-100 font-semibold">Points balance</p>
+          <p className="text-4xl font-black mt-1">{wallet.loyaltyPoints} <span className="text-lg font-bold">pts</span></p>
+          <p className="text-xs text-purple-100 mt-1">1 point = {POINT_VALUE_RWF} RWF wallet credit · redeem from 50 pts</p>
+        </div>
+
+        <p className="text-xs font-bold text-gray-500 mb-2">Redeem for wallet credit</p>
+        <div className="flex flex-wrap gap-2 mb-3">
+          {REDEEM_PRESETS.map((p) => (
+            <button
+              key={p}
+              type="button"
+              disabled={redeeming || wallet.loyaltyPoints < p}
+              onClick={() => redeem(p)}
+              className="text-sm bg-purple-50 text-hafi-purple font-bold px-4 py-2 rounded-full hover:bg-purple-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {p} pts → {formatPrice(p * POINT_VALUE_RWF)}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2 mb-3">
+          <input
+            type="number"
+            min={50}
+            step={1}
+            value={redeemCustom}
+            onChange={(e) => setRedeemCustom(e.target.value)}
+            placeholder="Custom amount (min 50)"
+            className="flex-1 border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-hafi-purple"
+          />
+          <button
+            type="button"
+            onClick={() => redeem(Number(redeemCustom))}
+            disabled={redeeming || !redeemCustom}
+            className="bg-hafi-purple text-white rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-50"
+          >
+            {redeeming ? "Redeeming..." : "Redeem"}
+          </button>
+        </div>
+
+        {redeemResult && (
+          <p className="text-sm font-semibold text-emerald-600 bg-emerald-50 px-4 py-2 rounded-xl mb-3">
+            {formatPrice(redeemResult.creditedAmount)} credited to your wallet — new balance {formatPrice(redeemResult.walletBalance)}.
+          </p>
+        )}
+        {redeemError && (
+          <p className="text-sm font-semibold text-red-600 bg-red-50 px-4 py-2 rounded-xl mb-3">{redeemError}</p>
+        )}
+
+        <p className="text-xs font-bold text-gray-500 mb-1">Recent activity</p>
         {ledger.length === 0 ? (
           <p className="text-sm text-gray-400">No ledger entries yet — earn points when you shop, book, or get verified.</p>
         ) : (
           ledger.slice(0, 8).map((entry) => (
-            <div key={entry.id} className="flex justify-between text-sm py-2 border-b border-gray-50 last:border-0">
+            <div
+              key={entry.id}
+              className={`flex justify-between text-sm py-2 border-b border-gray-50 last:border-0 ${
+                entry.points < 0 ? "bg-red-50/60 -mx-2 px-2 rounded-lg" : ""
+              }`}
+            >
               <span className="capitalize text-gray-700">{entry.reason.replaceAll("_", " ")}</span>
               <span className={`font-bold ${entry.points >= 0 ? "text-hafi-purple" : "text-red-500"}`}>
                 {entry.points >= 0 ? "+" : ""}
@@ -227,6 +368,45 @@ export default function ClientProfilePage() {
         onToggle={() => toggle("notifications")}
         badge={notifications.filter((n) => !n.isRead).length ? `${notifications.filter((n) => !n.isRead).length} new` : undefined}
       >
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-bold text-gray-500">Notification preferences</p>
+            {prefsSaved && <span className="text-xs font-bold text-emerald-600">Saved ✓</span>}
+          </div>
+          <div className="space-y-2">
+            {(
+              [
+                { key: "pushEnabled", label: "Push notifications", desc: "Booking updates and offers on your device" },
+                { key: "emailEnabled", label: "Email", desc: "Receipts and important account activity" },
+                { key: "smsEnabled", label: "SMS", desc: "Text alerts for urgent booking changes" },
+              ] as { key: keyof NotificationPrefs; label: string; desc: string }[]
+            ).map(({ key, label, desc }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => togglePref(key)}
+                className="w-full flex items-center justify-between p-3 rounded-xl border border-gray-100 hover:border-purple-200 text-left"
+              >
+                <span>
+                  <span className="block text-sm font-bold">{label}</span>
+                  <span className="block text-xs text-gray-400">{desc}</span>
+                </span>
+                <span
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                    prefs[key] ? "bg-hafi-purple" : "bg-gray-200"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                      prefs[key] ? "translate-x-[22px]" : "translate-x-0.5"
+                    }`}
+                  />
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {notifications.length === 0 ? (
           <p className="text-sm text-gray-400">No notifications yet.</p>
         ) : (

@@ -10,6 +10,22 @@
 
 ---
 
+## 0. Simplest option — one Render monolith
+
+One service serves web + API + Socket.io + uploads from the same origin (no CORS, no VITE_API_URL needed):
+
+| Setting | Value |
+|---------|-------|
+| Root Directory | `.` (repo root) |
+| Build Command | `npm install && npm run web:build && npm run db:push --workspace=@hafi/api` |
+| Start Command | `npm run start --workspace=@hafi/api` |
+| Health Check | `/health` |
+| Env vars | `DATABASE_URL`, `OPENAI_API_KEY`, `JWT_SECRET`, `NODE_ENV=production` |
+
+The API automatically serves `apps/web/dist` when it exists. Seed once after first deploy: `npm run db:seed` (Render shell) or run it locally against the production `DATABASE_URL`.
+
+---
+
 ## 1. Deploy API on Render
 
 ### Option A — Blueprint (recommended)

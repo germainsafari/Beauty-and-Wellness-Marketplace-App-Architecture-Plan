@@ -15,7 +15,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { trpcCall } from "../lib/api";
+import PaymentPicker, { type PaymentProvider } from "../components/PaymentPicker";
+import { resolveUploadUrl, trpcCall } from "../lib/api";
 import { colors, radius, spacing } from "../theme";
 import type { RootStackParamList } from "../navigation/types";
 
@@ -40,7 +41,7 @@ export default function ItemDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [offerAmount, setOfferAmount] = useState("");
   const [showOffer, setShowOffer] = useState(false);
-  const [buying, setBuying] = useState(false);
+  const [showPayment, setShowPayment] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -71,25 +72,24 @@ export default function ItemDetailScreen() {
     }
   };
 
-  const buyNow = async () => {
+  const payNow = async (provider: PaymentProvider, phone?: string) => {
     if (!item) return;
-    setBuying(true);
-    try {
-      const result = await trpcCall<{ payment: { status: string; externalReference: string } }>(
-        "commerce.buyNow",
-        { listingId: item.id, provider: "demo" },
-        "mutation"
-      );
+    // Errors propagate to PaymentPicker, which shows them inline.
+    const result = await trpcCall<{ payment: { status: string; externalReference: string } }>(
+      "commerce.buyNow",
+      { listingId: item.id, provider, phone },
+      "mutation"
+    );
+    if (result.payment.status === "succeeded") {
       Alert.alert(
-        result.payment.status === "succeeded" ? "Payment complete" : "Payment requested",
-        result.payment.status === "succeeded"
-          ? "The item is reserved for you with Hafi buyer protection."
-          : `Reference: ${result.payment.externalReference}`
+        "Payment complete",
+        `The item is reserved for you with Hafi buyer protection.\nReference: ${result.payment.externalReference}`
       );
-    } catch (e) {
-      Alert.alert("Checkout failed", e instanceof Error ? e.message : "Could not start checkout");
-    } finally {
-      setBuying(false);
+    } else {
+      Alert.alert(
+        "Payment request sent",
+        `Payment request sent — confirm on your phone.\nReference: ${result.payment.externalReference}`
+      );
     }
   };
 
@@ -125,7 +125,7 @@ export default function ItemDetailScreen() {
     <ScrollView style={styles.container}>
       <View style={styles.imageWrap}>
         {item.images?.[0] ? (
-          <Image source={{ uri: item.images[0] }} style={styles.image} contentFit="cover" />
+          <Image source={{ uri: resolveUploadUrl(item.images[0]) }} style={styles.image} contentFit="cover" />
         ) : (
           <Text style={{ fontSize: 64 }}>💄</Text>
         )}
@@ -211,14 +211,22 @@ export default function ItemDetailScreen() {
                 <Text style={styles.secondaryText}>Make Offer</Text>
               </Pressable>
             )}
-            <Pressable style={{ flex: 1 }} onPress={buyNow} disabled={buying}>
+            <Pressable style={{ flex: 1 }} onPress={() => setShowPayment(true)}>
               <LinearGradient colors={[colors.gold, colors.goldLight]} style={styles.cta}>
-                <Text style={styles.ctaText}>{buying ? "Processing..." : "Buy Now - Escrow"}</Text>
+                <Text style={styles.ctaText}>Buy Now - Escrow</Text>
               </LinearGradient>
             </Pressable>
           </View>
         )}
       </View>
+
+      <PaymentPicker
+        visible={showPayment}
+        title={item.title}
+        amountLabel={`${formatPrice(item.price)} + 5% buyer protection`}
+        onClose={() => setShowPayment(false)}
+        onConfirm={payNow}
+      />
     </ScrollView>
   );
 }

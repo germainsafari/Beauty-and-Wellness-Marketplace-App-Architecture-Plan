@@ -24,6 +24,7 @@ import {
   verificationRequests,
 } from "./schema.js";
 import type { User } from "./schema.js";
+import { sendPushToUser } from "../services/push.js";
 
 export async function getUserById(id: number) {
   const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
@@ -509,6 +510,14 @@ export async function createNotification(data: {
   actionUrl?: string;
 }) {
   await db.insert(notifications).values(data);
+  // Fire-and-forget push delivery — never block or fail the calling mutation.
+  void sendPushToUser(data.userId, {
+    title: data.title,
+    body: data.body ?? "",
+    data: { type: data.type, ...(data.actionUrl ? { actionUrl: data.actionUrl } : {}) },
+  }).catch((err) =>
+    console.warn("[push] notification push failed:", err instanceof Error ? err.message : err)
+  );
 }
 
 export async function createPushToken(data: {
@@ -1196,8 +1205,31 @@ export async function getServicesByProviderId(providerId: number) {
     .orderBy(services.name);
 }
 
-export async function getNearbyProviders(opts: { latitude?: number; longitude?: number }) {
-  const rows = await getAllProviders();
+export async function getProviderDistricts() {
+  const rows = await db
+    .select({
+      district: providerProfiles.district,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(providerProfiles)
+    .where(sql`${providerProfiles.district} is not null`)
+    .groupBy(providerProfiles.district)
+    .orderBy(providerProfiles.district);
+  return rows
+    .filter((r): r is { district: string; count: number } => r.district !== null)
+    .map((r) => ({ district: r.district, providerCount: r.count }));
+}
+
+export async function getNearbyProviders(opts: {
+  latitude?: number;
+  longitude?: number;
+  district?: string;
+}) {
+  let rows = await getAllProviders();
+  if (opts.district) {
+    const wanted = opts.district.toLowerCase();
+    rows = rows.filter((row) => row.profile.district?.toLowerCase() === wanted);
+  }
   return rows
     .map((row) => {
       const lat = Number(row.profile.latitude ?? -1.9441);

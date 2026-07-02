@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -13,6 +14,7 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
+import * as Location from "expo-location";
 import { useT } from "@hafi/i18n";
 import { trpcCall } from "../lib/api";
 import { colors, radius, spacing } from "../theme";
@@ -25,10 +27,23 @@ type Service = {
   category: Category | null;
 };
 type Provider = {
-  profile: { id: number; businessName: string; address: string; rating: string; reviewCount: number; description: string | null };
+  profile: {
+    id: number;
+    businessName: string;
+    address: string;
+    district: string | null;
+    rating: string;
+    reviewCount: number;
+    description: string | null;
+    latitude: string | null;
+    longitude: string | null;
+  };
   user: { isVerified: boolean };
   distanceKm: number | null;
 };
+type DistrictInfo = { district: string; providerCount: number };
+
+const KIGALI_CENTER = { latitude: -1.9441, longitude: 30.0619 };
 
 export default function DiscoverScreen() {
   const t = useT();
@@ -41,28 +56,64 @@ export default function DiscoverScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
+  const [districts, setDistricts] = useState<DistrictInfo[]>([]);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
+  const [district, setDistrict] = useState("all");
+  const [coords, setCoords] = useState<{ latitude: number; longitude: number }>(KIGALI_CENTER);
+  const [usingFallbackLocation, setUsingFallbackLocation] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Device location with graceful fallback to central Kigali.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          if (!cancelled) setUsingFallbackLocation(true);
+          return;
+        }
+        const pos = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        if (!cancelled) {
+          setCoords({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+          setUsingFallbackLocation(false);
+        }
+      } catch {
+        if (!cancelled) setUsingFallbackLocation(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const load = useCallback(async () => {
     try {
-      const [cats, svc, prov] = await Promise.all([
+      const providerInput: { latitude: number; longitude: number; district?: string } = {
+        ...coords,
+      };
+      if (district !== "all") providerInput.district = district;
+      const [cats, svc, prov, dists] = await Promise.all([
         trpcCall<Category[]>("discovery.categories"),
         trpcCall<Service[]>("bookings.services"),
-        trpcCall<Provider[]>("discovery.nearbyProviders", { latitude: -1.9441, longitude: 30.0619 }),
+        trpcCall<Provider[]>("discovery.nearbyProviders", providerInput),
+        trpcCall<DistrictInfo[]>("discovery.districts"),
       ]);
       setCategories(cats);
       setServices(svc);
       setProviders(prov);
+      setDistricts(dists);
     } catch {
       /* offline */
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [coords, district]);
 
   useEffect(() => {
     load();
@@ -90,7 +141,18 @@ export default function DiscoverScreen() {
     }
   };
 
+  const openInMaps = (p: Provider["profile"]) => {
+    const query =
+      p.latitude && p.longitude
+        ? `${p.latitude},${p.longitude}`
+        : `${p.businessName}, ${p.district ?? "Kigali"}, Rwanda`;
+    Linking.openURL(
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+    ).catch(() => {});
+  };
+
   const pills = [{ name: "all", icon: "✨" }, ...categories.map((c) => ({ name: c.name.toLowerCase(), icon: c.icon ?? "•" }))];
+  const districtPills = [{ district: "all", providerCount: 0 }, ...districts];
 
   return (
     <ScrollView
@@ -99,6 +161,14 @@ export default function DiscoverScreen() {
     >
       <Text style={styles.title}>{t("discover.title")}</Text>
       <Text style={styles.sub}>{t("mobile.bookServices")}</Text>
+      {usingFallbackLocation && (
+        <View style={styles.locationHint}>
+          <Ionicons name="location-outline" size={14} color={colors.gold} />
+          <Text style={styles.locationHintText}>
+            Using Kigali center — enable location for accurate distances
+          </Text>
+        </View>
+      )}
 
       <View style={styles.searchBox}>
         <Ionicons name="search" size={18} color={colors.gray400} />
@@ -124,14 +194,52 @@ export default function DiscoverScreen() {
         ))}
       </ScrollView>
 
+      {districts.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillScroll}>
+          {districtPills.map((d) => (
+            <Pressable
+              key={d.district}
+              style={[styles.districtPill, district === d.district && styles.districtPillActive]}
+              onPress={() => setDistrict(d.district)}
+            >
+              <Text
+                style={[
+                  styles.districtPillText,
+                  district === d.district && styles.districtPillTextActive,
+                ]}
+              >
+                {d.district === "all" ? "All districts" : `${d.district} · ${d.providerCount}`}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
+
       <Text style={styles.section}>{t("mobile.nearbyProviders")}</Text>
-      {providers.slice(0, 4).map(({ profile, user, distanceKm }) => (
+      {providers.slice(0, 6).map(({ profile, user, distanceKm }) => (
         <View key={profile.id} style={styles.providerCard}>
           <Text style={styles.providerName}>
             {profile.businessName}
             {user.isVerified ? " ✓" : ""}
           </Text>
-          <Text style={styles.providerMeta}>★ {profile.rating} · {profile.address}{distanceKm != null ? ` · ${distanceKm} km` : ""}</Text>
+          <Text style={styles.providerMeta}>
+            ★ {profile.rating} · {profile.address}
+            {distanceKm != null ? ` · ${distanceKm} km` : ""}
+          </Text>
+          <View style={styles.providerFooter}>
+            {profile.district ? (
+              <View style={styles.districtBadge}>
+                <Ionicons name="location" size={11} color={colors.purple} />
+                <Text style={styles.districtBadgeText}>{profile.district}</Text>
+              </View>
+            ) : (
+              <View />
+            )}
+            <Pressable style={styles.mapsBtn} onPress={() => openInMaps(profile)}>
+              <Ionicons name="map-outline" size={13} color={colors.white} />
+              <Text style={styles.mapsBtnText}>Open in Maps</Text>
+            </Pressable>
+          </View>
           <Text style={styles.providerDesc} numberOfLines={2}>{profile.description}</Text>
         </View>
       ))}
@@ -164,7 +272,19 @@ export default function DiscoverScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.purpleBg, padding: spacing.md },
   title: { fontSize: 26, fontWeight: "900", color: colors.purpleDark },
-  sub: { color: colors.gray400, marginBottom: spacing.md },
+  sub: { color: colors.gray400, marginBottom: spacing.sm },
+  locationHint: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#FEF7E6",
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    alignSelf: "flex-start",
+    marginBottom: spacing.sm,
+  },
+  locationHintText: { fontSize: 11, fontWeight: "700", color: "#B45309" },
   searchBox: { flexDirection: "row", alignItems: "center", backgroundColor: colors.white, borderRadius: radius.xl, paddingHorizontal: spacing.md, gap: spacing.sm, marginBottom: spacing.md },
   searchInput: { flex: 1, paddingVertical: 12, fontSize: 15, color: colors.gray800 },
   pillScroll: { marginBottom: spacing.md, maxHeight: 44 },
@@ -173,11 +293,20 @@ const styles = StyleSheet.create({
   pillIcon: { fontSize: 14 },
   pillText: { fontSize: 12, fontWeight: "700", color: colors.gray600, textTransform: "capitalize" },
   pillTextActive: { color: colors.white },
+  districtPill: { backgroundColor: colors.white, paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.full, marginRight: spacing.sm },
+  districtPillActive: { backgroundColor: colors.gold },
+  districtPillText: { fontSize: 12, fontWeight: "700", color: colors.gray600 },
+  districtPillTextActive: { color: colors.white },
   section: { fontSize: 16, fontWeight: "900", color: colors.purpleDark, marginBottom: spacing.sm, marginTop: spacing.sm },
   providerCard: { backgroundColor: colors.white, borderRadius: radius.xl, padding: spacing.md, marginBottom: spacing.sm },
   providerName: { fontWeight: "800", fontSize: 16, color: colors.purpleDark },
   providerMeta: { fontSize: 12, color: colors.gray400, marginTop: 4 },
-  providerDesc: { fontSize: 13, color: colors.gray600, marginTop: 6 },
+  providerFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8 },
+  districtBadge: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.purpleBg, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full },
+  districtBadgeText: { fontSize: 11, fontWeight: "800", color: colors.purple },
+  mapsBtn: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.purple, paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.full },
+  mapsBtnText: { fontSize: 11, fontWeight: "800", color: colors.white },
+  providerDesc: { fontSize: 13, color: colors.gray600, marginTop: 8 },
   serviceCard: { backgroundColor: colors.white, borderRadius: radius.xl, padding: spacing.md, marginBottom: spacing.sm },
   serviceRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   serviceIcon: { fontSize: 24 },

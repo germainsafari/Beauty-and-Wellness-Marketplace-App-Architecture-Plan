@@ -6,14 +6,16 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { useAuth } from "../context/AuthContext";
-import { trpcCall } from "../lib/api";
+import { getApiUrl, getToken, resolveUploadUrl, trpcCall } from "../lib/api";
 import { DEMO_DOC_URLS } from "../lib/onboarding";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import { useT } from "@hafi/i18n";
@@ -26,6 +28,18 @@ const PAYMENTS = [
   { id: "mtn_momo", label: "MTN MoMo" },
   { id: "airtel_money", label: "Airtel Money" },
   { id: "stripe", label: "Card (Stripe)" },
+];
+
+const REDEEM_PRESETS = [50, 100, 200];
+const POINT_VALUE_RWF = 10;
+const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
+
+type NotificationPrefs = { pushEnabled: boolean; emailEnabled: boolean; smsEnabled: boolean };
+
+const PREF_ROWS: { key: keyof NotificationPrefs; label: string }[] = [
+  { key: "pushEnabled", label: "Push notifications" },
+  { key: "emailEnabled", label: "Email" },
+  { key: "smsEnabled", label: "SMS" },
 ];
 
 export default function ProfileScreen() {
@@ -42,6 +56,9 @@ export default function ProfileScreen() {
   const [docUrl, setDocUrl] = useState("");
   const [defaultPayment, setDefaultPayment] = useState("demo");
   const [switching, setSwitching] = useState(false);
+  const [uploadingId, setUploadingId] = useState(false);
+  const [redeeming, setRedeeming] = useState(false);
+  const [prefs, setPrefs] = useState<NotificationPrefs>({ pushEnabled: true, emailEnabled: true, smsEnabled: false });
 
   const load = useCallback(async () => {
     try {
@@ -53,7 +70,7 @@ export default function ProfileScreen() {
         trpcCall<any[]>("profile.paymentHistory"),
         trpcCall<any[]>("help.topics"),
         trpcCall<any[]>("verification.mine"),
-        trpcCall<{ defaultPaymentProvider: string }>("profile.summary"),
+        trpcCall<{ defaultPaymentProvider: string; preferences?: NotificationPrefs }>("profile.summary"),
       ]);
       setWallet(bal);
       setLedger(led);
@@ -63,6 +80,7 @@ export default function ProfileScreen() {
       setHelpTopics(help);
       setVerification(ver);
       setDefaultPayment(summary.defaultPaymentProvider);
+      if (summary.preferences) setPrefs(summary.preferences);
     } catch {
       /* offline */
     }
@@ -87,6 +105,110 @@ export default function ProfileScreen() {
       load();
     } catch (e) {
       Alert.alert("Error", e instanceof Error ? e.message : "Could not submit");
+    }
+  };
+
+  const pickAndSubmitId = async () => {
+    if (uploadingId) return;
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert("Permission needed", "Allow photo access to upload your ID.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.7,
+      base64: true,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    if (!asset.base64) {
+      Alert.alert("Error", "Could not read the selected image.");
+      return;
+    }
+    if (asset.base64.length * 0.75 > MAX_UPLOAD_BYTES) {
+      Alert.alert("Too large", "Photo must be under 2MB. Try a smaller image.");
+      return;
+    }
+    setUploadingId(true);
+    try {
+      const token = await getToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const res = await fetch(`${getApiUrl()}/uploads`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          kind: "verification",
+          mimeType: asset.mimeType || "image/jpeg",
+          data: asset.base64,
+        }),
+      });
+      const json = (await res.json().catch(() => null)) as { id?: number; error?: string } | null;
+      if (!res.ok || !json?.id) {
+        throw new Error(json?.error || `Upload failed (${res.status})`);
+      }
+      await trpcCall("verification.submit", { uploadId: json.id, documentType: "national_id" }, "mutation");
+      Alert.alert("Submitted", "Your ID was uploaded — admin will review within 24–48 hours.");
+      load();
+    } catch (e) {
+      Alert.alert("Upload failed", e instanceof Error ? e.message : "Could not upload your ID");
+    } finally {
+      setUploadingId(false);
+    }
+  };
+
+  const redeem = async (points: number) => {
+    setRedeeming(true);
+    try {
+      const result = await trpcCall<{
+        loyaltyPoints: number;
+        walletBalance: string | number;
+        redeemedPoints: number;
+        creditedAmount: string | number;
+      }>("commerce.redeemPoints", { points }, "mutation");
+      Alert.alert(
+        "Points redeemed",
+        `RWF ${Number(result.creditedAmount).toLocaleString()} added to your wallet. New balance: RWF ${Number(result.walletBalance).toLocaleString()}.`
+      );
+      load();
+    } catch (e) {
+      Alert.alert("Could not redeem", e instanceof Error ? e.message : "Try again later.");
+    } finally {
+      setRedeeming(false);
+    }
+  };
+
+  const confirmRedeem = (points: number) => {
+    if (redeeming) return;
+    if (wallet.loyaltyPoints < points) {
+      Alert.alert("Not enough points", `You have ${wallet.loyaltyPoints} pts — this option needs ${points}.`);
+      return;
+    }
+    Alert.alert(
+      "Redeem points",
+      `Redeem ${points} pts for RWF ${(points * POINT_VALUE_RWF).toLocaleString()} wallet credit?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Redeem", onPress: () => redeem(points) },
+      ]
+    );
+  };
+
+  const togglePref = async (key: keyof NotificationPrefs) => {
+    const previous = prefs;
+    const next = { ...prefs, [key]: !prefs[key] };
+    setPrefs(next); // optimistic
+    try {
+      const res = await trpcCall<{ success: boolean; preferences: NotificationPrefs }>(
+        "profile.updatePreferences",
+        { [key]: next[key] },
+        "mutation"
+      );
+      setPrefs(res.preferences);
+    } catch (e) {
+      setPrefs(previous);
+      Alert.alert("Error", e instanceof Error ? e.message : "Could not save preference");
     }
   };
 
@@ -160,7 +282,19 @@ export default function ProfileScreen() {
       </View>
 
       <Section title="Identity verification" icon="shield-checkmark-outline" open={open === "verification"} onPress={() => toggle("verification")}>
-        <Text style={styles.hint}>Secure HTTPS document URL for MVP demo.</Text>
+        <Text style={styles.hint}>Upload a photo of your national ID (max 2MB). Admin reviews within 24–48 hours.</Text>
+        <Pressable style={[styles.uploadBtn, uploadingId && styles.smallBtnDisabled]} onPress={pickAndSubmitId} disabled={uploadingId}>
+          {uploadingId ? (
+            <ActivityIndicator color={colors.white} />
+          ) : (
+            <>
+              <Ionicons name="camera-outline" size={18} color={colors.white} />
+              <Text style={styles.smallBtnText}>Pick a photo of your ID</Text>
+            </>
+          )}
+        </Pressable>
+
+        <Text style={styles.orDivider}>or paste a secure document URL</Text>
         <View style={styles.chipRow}>
           {DEMO_DOC_URLS.map((d) => (
             <Pressable key={d.url} style={styles.chip} onPress={() => setDocUrl(d.url)}>
@@ -172,17 +306,49 @@ export default function ProfileScreen() {
         <Pressable style={[styles.smallBtn, !docUrl.startsWith("https://") && styles.smallBtnDisabled]} onPress={submitVerification}>
           <Text style={styles.smallBtnText}>Submit</Text>
         </Pressable>
-        {verification[0] && <Text style={styles.meta}>Status: {verification[0].status}</Text>}
+        {verification[0] && (
+          <>
+            <Text style={styles.meta}>Status: {verification[0].status}</Text>
+            {verification[0].documentUrl ? (
+              <Pressable onPress={() => Linking.openURL(resolveUploadUrl(verification[0].documentUrl))}>
+                <Text style={styles.link}>View submitted document</Text>
+              </Pressable>
+            ) : null}
+          </>
+        )}
       </Section>
 
-      <Section title="Recent loyalty activity" icon="gift-outline" badge={`${wallet.loyaltyPoints} pts`} open={open === "loyalty"} onPress={() => toggle("loyalty")}>
+      <Section title="Loyalty & rewards" icon="gift-outline" badge={`${wallet.loyaltyPoints} pts`} open={open === "loyalty"} onPress={() => toggle("loyalty")}>
+        <View style={styles.pointsCard}>
+          <Text style={styles.pointsLabel}>Points balance</Text>
+          <Text style={styles.pointsValue}>{wallet.loyaltyPoints} pts</Text>
+          <Text style={styles.pointsHint}>1 pt = {POINT_VALUE_RWF} RWF wallet credit · redeem from 50 pts</Text>
+        </View>
+        <Text style={styles.subHeading}>Redeem for wallet credit</Text>
+        <View style={styles.chipRow}>
+          {REDEEM_PRESETS.map((p) => (
+            <Pressable
+              key={p}
+              style={[styles.redeemChip, (redeeming || wallet.loyaltyPoints < p) && styles.redeemChipDisabled]}
+              onPress={() => confirmRedeem(p)}
+              disabled={redeeming || wallet.loyaltyPoints < p}
+            >
+              <Text style={styles.redeemChipText}>{p} pts → RWF {(p * POINT_VALUE_RWF).toLocaleString()}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <Text style={styles.subHeading}>Recent activity</Text>
         {ledger.length === 0 ? (
           <Text style={styles.empty}>Earn points when you shop, book, or get verified.</Text>
         ) : (
           ledger.slice(0, 8).map((e) => (
-            <View key={e.id} style={styles.row}>
+            <View key={e.id} style={[styles.row, e.points < 0 && styles.rowNegative]}>
               <Text style={styles.rowLabel}>{e.reason.replaceAll("_", " ")}</Text>
-              <Text style={styles.rowVal}>+{e.points}</Text>
+              <Text style={[styles.rowVal, e.points < 0 && styles.rowValNegative]}>
+                {e.points >= 0 ? "+" : ""}
+                {e.points}
+              </Text>
             </View>
           ))
         )}
@@ -201,6 +367,19 @@ export default function ProfileScreen() {
       </Section>
 
       <Section title="Notifications" icon="notifications-outline" badge={unread ? String(unread) : undefined} open={open === "notifications"} onPress={() => toggle("notifications")}>
+        <Text style={styles.subHeading}>Preferences</Text>
+        {PREF_ROWS.map(({ key, label }) => (
+          <View key={key} style={styles.prefRow}>
+            <Text style={styles.prefLabel}>{label}</Text>
+            <Switch
+              value={prefs[key]}
+              onValueChange={() => togglePref(key)}
+              trackColor={{ false: "#E5E7EB", true: colors.purpleLight }}
+              thumbColor={prefs[key] ? colors.purple : colors.white}
+            />
+          </View>
+        ))}
+
         {notifications.length === 0 ? (
           <Text style={styles.empty}>No notifications yet.</Text>
         ) : (
@@ -311,10 +490,34 @@ const styles = StyleSheet.create({
   smallBtn: { backgroundColor: colors.purple, borderRadius: radius.lg, paddingVertical: 10, alignItems: "center" },
   smallBtnDisabled: { opacity: 0.5 },
   smallBtnText: { color: colors.white, fontWeight: "800" },
+  uploadBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.purple,
+    borderRadius: radius.lg,
+    paddingVertical: 12,
+    marginBottom: spacing.sm,
+    minHeight: 44,
+  },
+  orDivider: { fontSize: 11, color: colors.gray400, textAlign: "center", marginVertical: spacing.sm },
+  pointsCard: { backgroundColor: colors.purple, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.sm },
+  pointsLabel: { fontSize: 11, color: "rgba(255,255,255,0.75)", fontWeight: "700", textTransform: "uppercase" },
+  pointsValue: { fontSize: 28, fontWeight: "900", color: colors.white, marginTop: 2 },
+  pointsHint: { fontSize: 11, color: "rgba(255,255,255,0.75)", marginTop: 4 },
+  subHeading: { fontSize: 12, fontWeight: "800", color: colors.gray600, marginTop: spacing.sm, marginBottom: spacing.sm },
+  redeemChip: { backgroundColor: colors.purpleBg, borderWidth: 1, borderColor: "#DDD6FE", paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.full },
+  redeemChipDisabled: { opacity: 0.4 },
+  redeemChipText: { fontSize: 12, fontWeight: "800", color: colors.purple },
+  prefRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 },
+  prefLabel: { fontSize: 13, fontWeight: "700", color: colors.gray800 },
   empty: { fontSize: 13, color: colors.gray400 },
   row: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#F9FAFB" },
+  rowNegative: { backgroundColor: "#FFF1F2", marginHorizontal: -8, paddingHorizontal: 8, borderRadius: radius.md },
   rowLabel: { flex: 1, fontSize: 13, color: colors.gray800, textTransform: "capitalize" },
   rowVal: { fontWeight: "800", color: colors.purple },
+  rowValNegative: { color: colors.rose },
   payOption: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: spacing.sm, borderRadius: radius.lg, borderWidth: 1, borderColor: "#F3F4F6", marginBottom: spacing.sm },
   payOptionActive: { borderColor: colors.purple, backgroundColor: colors.purpleBg },
   payLabel: { fontWeight: "700", color: colors.purpleDark },

@@ -11,6 +11,17 @@ export function getApiUrl(): string {
   return url.replace(/\/$/, "");
 }
 
+/**
+ * Listings store relative upload paths ("/uploads/:id"). Resolve them against
+ * the API base URL at render time; absolute URLs pass through unchanged.
+ */
+export function resolveUploadUrl(path: string): string {
+  if (!path) return path;
+  if (/^https?:\/\//i.test(path)) return path;
+  if (path.startsWith("/uploads")) return `${getApiUrl()}${path}`;
+  return path;
+}
+
 export async function getToken(): Promise<string | null> {
   try {
     return await SecureStore.getItemAsync(TOKEN_KEY);

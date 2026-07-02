@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
+import BookingSheet from "../components/BookingSheet";
 import { trpcCall } from "../lib/api";
 import { colors, radius, spacing } from "../theme";
 
@@ -35,6 +36,7 @@ export default function BookingsScreen() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [bookingService, setBookingService] = useState<Service | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -54,22 +56,19 @@ export default function BookingsScreen() {
 
   useEffect(() => { load(); }, [load]);
 
-  const bookService = async (serviceId: number, name: string) => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(10, 0, 0, 0);
-    try {
-      await trpcCall("bookings.create", {
-        serviceId,
-        scheduledAt: tomorrow.toISOString(),
-        notes: "Booked via Hafi app",
-      }, "mutation");
-      Alert.alert("Booked! ✨", `Your ${name} appointment is pending confirmation.`);
-      setTab("mine");
-      load();
-    } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Booking failed");
-    }
+  const confirmBooking = async (scheduledAt: Date) => {
+    if (!bookingService) return;
+    // Errors propagate to BookingSheet, which shows them inline.
+    await trpcCall("bookings.create", {
+      serviceId: bookingService.service.id,
+      scheduledAt: scheduledAt.toISOString(),
+      notes: "Booked via Hafi app",
+    }, "mutation");
+    const name = bookingService.service.name;
+    setBookingService(null);
+    Alert.alert("Booked! ✨", `Your ${name} appointment is pending confirmation.`);
+    setTab("mine");
+    load();
   };
 
   const formatPrice = (p: string) => `RWF ${Number(p).toLocaleString()}`;
@@ -119,7 +118,7 @@ export default function BookingsScreen() {
               )}
               <View style={styles.serviceFooter}>
                 <Text style={styles.servicePrice}>{formatPrice(item.service.price)}</Text>
-                <Pressable onPress={() => bookService(item.service.id, item.service.name)}>
+                <Pressable onPress={() => setBookingService(item)}>
                   <LinearGradient colors={[colors.purple, colors.purpleLight]} style={styles.bookBtn}>
                     <Text style={styles.bookBtnText}>Book Now</Text>
                   </LinearGradient>
@@ -161,6 +160,14 @@ export default function BookingsScreen() {
           )}
         />
       )}
+
+      <BookingSheet
+        visible={bookingService !== null}
+        serviceName={bookingService?.service.name ?? ""}
+        price={bookingService?.service.price ?? "0"}
+        onClose={() => setBookingService(null)}
+        onConfirm={confirmBooking}
+      />
     </View>
   );
 }

@@ -1,5 +1,7 @@
 import "dotenv/config";
-import { resolve } from "path";
+import { existsSync } from "fs";
+import { dirname, join, resolve } from "path";
+import { fileURLToPath } from "url";
 import { config } from "dotenv";
 
 config({ path: resolve(process.cwd(), "../../.env") });
@@ -40,7 +42,16 @@ mountUploadRoutes(app);
 
 app.use(express.json({ limit: "1mb" }));
 
-app.get("/", (_req, res) => {
+// Monolith mode: when the web app is built into apps/web/dist, serve it from
+// this process (single Render service) instead of the API landing page.
+const webDist = join(dirname(fileURLToPath(import.meta.url)), "../../web/dist");
+const serveWeb = existsSync(join(webDist, "index.html"));
+if (serveWeb) {
+  app.use(express.static(webDist));
+}
+
+app.get("/", (_req, res, next) => {
+  if (serveWeb) return next();
   res.type("html").send(`<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="utf-8"><title>Hafi API</title>
@@ -73,6 +84,12 @@ app.use(
     createContext,
   })
 );
+
+if (serveWeb) {
+  app.get(/^\/(?!trpc|uploads|health|socket\.io).*/, (_req, res) => {
+    res.sendFile(join(webDist, "index.html"));
+  });
+}
 
 initRealtime(server);
 

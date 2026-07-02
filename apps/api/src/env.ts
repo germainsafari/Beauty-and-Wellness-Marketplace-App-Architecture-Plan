@@ -10,6 +10,7 @@ export const ENV = {
   jwtSecret: process.env.JWT_SECRET || "hafi-dev-secret",
   openaiApiKey: process.env.OPENAI_API_KEY || process.env.OPENAI_API || "",
   corsOrigins: process.env.CORS_ORIGINS?.split(",").map((s) => s.trim()).filter(Boolean) ?? [],
+  expoAccessToken: process.env.EXPO_ACCESS_TOKEN || "",
 };
 
 if (!ENV.databaseUrl) {

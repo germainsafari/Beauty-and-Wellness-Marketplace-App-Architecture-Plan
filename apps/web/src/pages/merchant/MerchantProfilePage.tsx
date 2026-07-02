@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useApp } from "../../context/AppContext";
 import { trpcCall } from "../../lib/api";
+import DocumentUpload, { resolveUploadUrl } from "../../components/DocumentUpload";
 
 export default function MerchantProfilePage() {
   const { user, logout, switchRole } = useApp();
@@ -122,13 +123,44 @@ export default function MerchantProfilePage() {
 
       <div className="bg-white rounded-2xl p-6 shadow-sm border space-y-3">
         <h2 className="font-black text-lg">Identity verification</h2>
-        <p className="text-sm text-gray-500">Submit a national ID or business registration link. Admin approval activates your verified badge.</p>
+        <p className="text-sm text-gray-500">Upload your national ID or business registration (image or PDF, max 2MB). Admin approval activates your verified badge.</p>
         {verificationMessage && <p className="text-sm text-emerald-600 font-semibold">{verificationMessage}</p>}
-        <div className="flex gap-2">
-          <input value={docUrl} onChange={(e) => setDocUrl(e.target.value)} placeholder="https://..." className="flex-1 border rounded-xl px-3 py-2 text-sm" />
-          <button onClick={submitVerification} disabled={!docUrl} className="bg-hafi-purple text-white rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-50">Submit</button>
-        </div>
-        {verificationRequests[0] && <p className="text-xs capitalize">Latest status: <strong>{verificationRequests[0].status}</strong></p>}
+        <DocumentUpload
+          documentTypes={[
+            { value: "national_id", label: "National ID" },
+            { value: "business_registration", label: "Business registration" },
+          ]}
+          onSubmitted={() => {
+            trpcCall<any[]>("verification.mine").then(setVerificationRequests).catch(() => {});
+          }}
+        />
+        <details className="group">
+          <summary className="text-xs font-bold text-gray-500 cursor-pointer list-none">
+            Or paste a secure document URL instead ▾
+          </summary>
+          <div className="flex gap-2 mt-2">
+            <input value={docUrl} onChange={(e) => setDocUrl(e.target.value)} placeholder="https://..." className="flex-1 border rounded-xl px-3 py-2 text-sm" />
+            <button onClick={submitVerification} disabled={!docUrl} className="bg-hafi-purple text-white rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-50">Submit</button>
+          </div>
+        </details>
+        {verificationRequests[0] && (
+          <p className="text-xs capitalize">
+            Latest status: <strong className="text-hafi-purple">{verificationRequests[0].status}</strong>
+            {verificationRequests[0].documentType && (
+              <span className="text-gray-400"> · {String(verificationRequests[0].documentType).replaceAll("_", " ")}</span>
+            )}
+            {verificationRequests[0].documentUrl && (
+              <a
+                href={resolveUploadUrl(verificationRequests[0].documentUrl)}
+                target="_blank"
+                rel="noreferrer"
+                className="text-hafi-purple underline block truncate mt-1 normal-case"
+              >
+                View submitted document
+              </a>
+            )}
+          </p>
+        )}
       </div>
 
       <button

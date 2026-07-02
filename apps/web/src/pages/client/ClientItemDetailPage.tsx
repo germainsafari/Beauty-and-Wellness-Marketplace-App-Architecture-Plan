@@ -8,10 +8,10 @@ import {
   Eye,
   Heart,
   MessageCircle,
-  Share2,
   Shield,
 } from "lucide-react";
 import BundleSheet, { type BundleQuote } from "../../components/BundleSheet";
+import ShareButtons from "../../components/ShareButtons";
 import ListingCard, { type ListingCardItem } from "../../components/ListingCard";
 import { formatPrice, trpcCall } from "../../lib/api";
 import { useApp } from "../../context/AppContext";
@@ -130,16 +130,6 @@ export default function ClientItemDetailPage() {
     if (!user) return;
     await trpcCall("listings.toggleFavorite", { listingId: item.id }, "mutation");
     setIsFavorite((v) => !v);
-  };
-
-  const share = async () => {
-    const url = window.location.href;
-    if (navigator.share) {
-      await navigator.share({ title: item.title, text: `Check this out on Hafi: ${item.title}`, url });
-    } else {
-      await navigator.clipboard.writeText(url);
-      setMsg("Share link copied.");
-    }
   };
 
   return (
@@ -351,9 +341,9 @@ export default function ClientItemDetailPage() {
                       ? `Buy bundle (${bundleIds.length + 1} items)${bundleQuote ? ` · ${formatPrice(bundleQuote.total)}` : ""}`
                       : "Buy now"}
                 </button>
-                <button onClick={share} className="sm:w-14 border rounded-xl flex items-center justify-center py-4 hover:bg-gray-50">
-                  <Share2 size={20} />
-                </button>
+              </div>
+              <div className="flex justify-center sm:justify-start">
+                <ShareButtons title={`${item.title} on Hafi`} compact />
               </div>
             </div>
           )}

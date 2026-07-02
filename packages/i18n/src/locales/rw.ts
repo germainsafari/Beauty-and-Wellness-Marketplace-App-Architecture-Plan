@@ -1,4 +1,4 @@
-import type { TranslationKey } from "./en.js";
+import type { TranslationKey } from "./en";
 
 export const rw: Record<TranslationKey, string> = {
   "lang.en": "Icyongereza",

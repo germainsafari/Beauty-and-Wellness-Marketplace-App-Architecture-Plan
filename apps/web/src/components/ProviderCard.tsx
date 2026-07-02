@@ -7,6 +7,7 @@ type Provider = {
     id: number;
     businessName: string;
     address: string;
+    district: string | null;
     rating: string;
     reviewCount: number;
     description: string | null;
@@ -78,6 +79,11 @@ export default function ProviderCard({ provider, onBook, categoryFilter }: Props
               {distanceKm !== null && (
                 <span className="text-xs font-bold text-hafi-purple bg-purple-50 px-2 py-0.5 rounded-full">
                   {distanceKm} km away
+                </span>
+              )}
+              {profile.district && (
+                <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+                  📍 {profile.district}
                 </span>
               )}
             </div>

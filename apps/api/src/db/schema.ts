@@ -53,6 +53,7 @@ export const providerProfiles = pgTable("provider_profiles", {
   businessName: varchar("business_name", { length: 255 }).notNull(),
   description: text("description"),
   address: varchar("address", { length: 500 }).notNull(),
+  district: varchar("district", { length: 100 }),
   latitude: decimal("latitude", { precision: 10, scale: 7 }),
   longitude: decimal("longitude", { precision: 10, scale: 7 }),
   rating: decimal("rating", { precision: 3, scale: 2 }).default("0.00").notNull(),

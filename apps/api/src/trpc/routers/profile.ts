@@ -13,6 +13,27 @@ import { protectedProcedure, router } from "../trpc.js";
 
 const paymentProvider = z.enum(["mtn_momo", "airtel_money", "stripe", "demo"]);
 
+const preferencesInput = z.object({
+  pushEnabled: z.boolean().optional(),
+  emailEnabled: z.boolean().optional(),
+  smsEnabled: z.boolean().optional(),
+});
+
+type StoredPreferences = {
+  defaultPaymentProvider?: string;
+  pushEnabled?: boolean;
+  emailEnabled?: boolean;
+  smsEnabled?: boolean;
+};
+
+function resolveNotificationPreferences(prefs: StoredPreferences | null | undefined) {
+  return {
+    pushEnabled: prefs?.pushEnabled ?? true,
+    emailEnabled: prefs?.emailEnabled ?? true,
+    smsEnabled: prefs?.smsEnabled ?? false,
+  };
+}
+
 export const profileRouter = router({
   summary: protectedProcedure.query(async ({ ctx }) => {
     const [wallet, notifications, orders, ledger, verification] = await Promise.all([
@@ -23,15 +44,32 @@ export const profileRouter = router({
       getMyVerificationRequests(ctx.user.id),
     ]);
     const user = await getUserById(ctx.user.id);
+    const prefs = (user?.preferences ?? {}) as StoredPreferences;
     return {
       wallet,
       unreadNotifications: notifications.filter((n) => !n.isRead).length,
       orderCount: orders.length,
       loyaltyEntries: ledger.length,
       verificationStatus: verification[0]?.status ?? null,
-      defaultPaymentProvider: user?.preferences?.defaultPaymentProvider ?? "demo",
+      defaultPaymentProvider: prefs.defaultPaymentProvider ?? "demo",
+      preferences: resolveNotificationPreferences(prefs),
     };
   }),
+
+  updatePreferences: protectedProcedure
+    .input(preferencesInput)
+    .mutation(async ({ ctx, input }) => {
+      const user = await getUserById(ctx.user.id);
+      const merged: StoredPreferences = { ...((user?.preferences ?? {}) as StoredPreferences) };
+      if (input.pushEnabled !== undefined) merged.pushEnabled = input.pushEnabled;
+      if (input.emailEnabled !== undefined) merged.emailEnabled = input.emailEnabled;
+      if (input.smsEnabled !== undefined) merged.smsEnabled = input.smsEnabled;
+      const updated = await updateUser(ctx.user.id, { preferences: merged });
+      return {
+        success: true,
+        preferences: resolveNotificationPreferences((updated?.preferences ?? merged) as StoredPreferences),
+      };
+    }),
 
   setDefaultPayment: protectedProcedure
     .input(z.object({ provider: paymentProvider }))

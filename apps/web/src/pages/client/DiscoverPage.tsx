@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Search, SlidersHorizontal } from "lucide-react";
+import { List, Map as MapIcon, Search, SlidersHorizontal } from "lucide-react";
 import ProviderCard from "../../components/ProviderCard";
+import ProviderMap from "../../components/ProviderMap";
 import BookingModal from "../../components/BookingModal";
 import { formatPrice, trpcCall } from "../../lib/api";
 
@@ -11,6 +12,7 @@ type Provider = {
     id: number;
     businessName: string;
     address: string;
+    district: string | null;
     rating: string;
     reviewCount: number;
     description: string | null;
@@ -20,21 +22,31 @@ type Provider = {
   user: { id: number; name: string; avatarUrl: string | null; isVerified: boolean };
   distanceKm: number | null;
 };
+type DistrictInfo = { district: string; providerCount: number };
 type ServiceRow = {
   service: { id: number; name: string; price: string; duration: number };
   provider: { businessName: string; id: number };
   category: Category | null;
 };
 
+const KIGALI_CENTER = { latitude: -1.9441, longitude: 30.0619 };
+
 export default function DiscoverPage() {
   const [searchParams] = useSearchParams();
   const [providers, setProviders] = useState<Provider[]>([]);
   const [services, setServices] = useState<ServiceRow[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [districts, setDistricts] = useState<DistrictInfo[]>([]);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState(searchParams.get("category") ?? "all");
+  const [district, setDistrict] = useState("all");
   const [nearMe, setNearMe] = useState(true);
   const [view, setView] = useState<"providers" | "services">("providers");
+  const [providerView, setProviderView] = useState<"list" | "map">("list");
+  const [coords, setCoords] = useState<{ latitude: number; longitude: number }>(KIGALI_CENTER);
+  const [locationStatus, setLocationStatus] = useState<"locating" | "granted" | "fallback">(
+    "locating"
+  );
   const [bookingService, setBookingService] = useState<{
     id: number;
     name: string;
@@ -43,13 +55,35 @@ export default function DiscoverPage() {
     providerName?: string;
   } | null>(null);
 
+  // Browser geolocation on mount — graceful fallback to central Kigali.
   useEffect(() => {
-    trpcCall<Provider[]>("discovery.nearbyProviders", { latitude: -1.9441, longitude: 30.0619 })
-      .then(setProviders)
-      .catch(() => {});
+    if (!("geolocation" in navigator)) {
+      setLocationStatus("fallback");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCoords({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+        setLocationStatus("granted");
+      },
+      () => setLocationStatus("fallback"),
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
+    );
+  }, []);
+
+  useEffect(() => {
     trpcCall<ServiceRow[]>("bookings.services").then(setServices).catch(() => {});
     trpcCall<Category[]>("discovery.categories").then(setCategories).catch(() => {});
+    trpcCall<DistrictInfo[]>("discovery.districts").then(setDistricts).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const input: { latitude: number; longitude: number; district?: string } = { ...coords };
+    if (district !== "all") input.district = district;
+    trpcCall<Provider[]>("discovery.nearbyProviders", input)
+      .then(setProviders)
+      .catch(() => {});
+  }, [coords, district]);
 
   useEffect(() => {
     const fromUrl = searchParams.get("category");
@@ -66,7 +100,8 @@ export default function DiscoverPage() {
         (p) =>
           p.profile.businessName.toLowerCase().includes(q) ||
           p.profile.description?.toLowerCase().includes(q) ||
-          p.profile.address.toLowerCase().includes(q)
+          p.profile.address.toLowerCase().includes(q) ||
+          p.profile.district?.toLowerCase().includes(q)
       );
     }
     return list;
@@ -87,6 +122,15 @@ export default function DiscoverPage() {
 
   const categoryPills = [{ id: 0, name: "all", icon: "✨" }, ...categories];
 
+  const handleViewFromMap = (providerId: number) => {
+    setProviderView("list");
+    window.setTimeout(() => {
+      document
+        .getElementById(`provider-${providerId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
+  };
+
   return (
     <div className="space-y-8">
       <div>
@@ -94,6 +138,11 @@ export default function DiscoverPage() {
         <p className="text-gray-500 mt-1">
           Book beauty, wellness, home & local services near you — Booksy-style.
         </p>
+        {locationStatus === "fallback" && (
+          <p className="text-xs font-semibold text-amber-700 bg-amber-50 inline-flex items-center gap-1 px-3 py-1.5 rounded-full mt-2">
+            📍 Using Kigali center — allow location access for accurate distances
+          </p>
+        )}
       </div>
 
       {/* Search & filters */}
@@ -149,24 +198,85 @@ export default function DiscoverPage() {
             </button>
           ))}
         </div>
+
+        {/* District chips */}
+        {districts.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+            <button
+              onClick={() => setDistrict("all")}
+              className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                district === "all"
+                  ? "bg-hafi-gold text-white shadow-md"
+                  : "bg-gray-50 text-gray-600 hover:bg-amber-50"
+              }`}
+            >
+              All districts
+            </button>
+            {districts.map((d) => (
+              <button
+                key={d.district}
+                onClick={() => setDistrict(d.district)}
+                className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  district === d.district
+                    ? "bg-hafi-gold text-white shadow-md"
+                    : "bg-gray-50 text-gray-600 hover:bg-amber-50"
+                }`}
+              >
+                {d.district} · {d.providerCount}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {view === "providers" ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {sortedProviders.length === 0 ? (
-            <div className="col-span-full text-center py-16 text-gray-400">
-              <SlidersHorizontal className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p>No providers found. Run <code className="text-hafi-purple">npm run db:seed:extra</code> for demo data.</p>
+        <div className="space-y-4">
+          <div className="flex justify-end">
+            <div className="flex rounded-xl border overflow-hidden">
+              <button
+                onClick={() => setProviderView("list")}
+                className={`flex items-center gap-1.5 px-4 py-2 text-sm font-bold ${
+                  providerView === "list" ? "bg-hafi-purple text-white" : "bg-white text-gray-600"
+                }`}
+              >
+                <List size={16} /> List
+              </button>
+              <button
+                onClick={() => setProviderView("map")}
+                className={`flex items-center gap-1.5 px-4 py-2 text-sm font-bold ${
+                  providerView === "map" ? "bg-hafi-purple text-white" : "bg-white text-gray-600"
+                }`}
+              >
+                <MapIcon size={16} /> Map
+              </button>
             </div>
+          </div>
+
+          {providerView === "map" ? (
+            <ProviderMap
+              providers={sortedProviders}
+              center={[coords.latitude, coords.longitude]}
+              onView={handleViewFromMap}
+            />
           ) : (
-            sortedProviders.map((p) => (
-              <ProviderCard
-                key={p.profile.id}
-                provider={p}
-                categoryFilter={category}
-                onBook={setBookingService}
-              />
-            ))
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {sortedProviders.length === 0 ? (
+                <div className="col-span-full text-center py-16 text-gray-400">
+                  <SlidersHorizontal className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p>No providers found. Run <code className="text-hafi-purple">npm run db:seed:extra</code> for demo data.</p>
+                </div>
+              ) : (
+                sortedProviders.map((p) => (
+                  <div key={p.profile.id} id={`provider-${p.profile.id}`}>
+                    <ProviderCard
+                      provider={p}
+                      categoryFilter={category}
+                      onBook={setBookingService}
+                    />
+                  </div>
+                ))
+              )}
+            </div>
           )}
         </div>
       ) : (

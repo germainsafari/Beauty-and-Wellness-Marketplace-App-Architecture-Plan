@@ -85,3 +85,10 @@ export async function trpcCall<T>(
 export function formatPrice(amount: string | number): string {
   return `RWF ${Number(amount).toLocaleString()}`;
 }
+
+/** Uploaded files are stored as relative "/uploads/:id" paths; prefix them with
+ * the API origin when the web app is served from a different host. */
+export function resolveUploadUrl(path: string): string {
+  if (!path.startsWith("/uploads/")) return path;
+  return `${getApiUrl()}${path}`;
+}

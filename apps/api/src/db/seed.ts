@@ -19,7 +19,7 @@ import {
   users,
   verificationRequests,
 } from "./schema.js";
-import { eq } from "drizzle-orm";
+import { and, eq, ilike, isNull } from "drizzle-orm";
 import { insertMerchantDemoData } from "./seed-demo-data.js";
 import { insertClientDemoData } from "./seed-client-data.js";
 import { insertExtraServicesData } from "./seed-extra-services.js";
@@ -119,6 +119,7 @@ async function seed() {
         businessName: "Amara Beauty Studio",
         description: "Premium makeup & glam services",
         address: "KN 4 Ave, Kigali",
+        district: "Nyarugenge",
         latitude: "-1.9441",
         longitude: "30.0619",
         rating: "4.9",
@@ -129,6 +130,7 @@ async function seed() {
         businessName: "Lux Hair Studio",
         description: "Braids, silk press, color & more",
         address: "Kacyiru, Kigali",
+        district: "Kacyiru",
         latitude: "-1.9365",
         longitude: "30.0789",
         rating: "5.0",
@@ -383,6 +385,28 @@ async function seed() {
   });
 
   await insertExtraServicesData();
+
+  // Backfill Kigali districts for any provider profiles created without one
+  // (e.g. the extra demo providers), matched by their address.
+  const districtByAddress: Array<[string, string]> = [
+    ["%kacyiru%", "Kacyiru"],
+    ["%remera%", "Remera"],
+    ["%nyarutarama%", "Nyarutarama"],
+    ["%nyamirambo%", "Nyamirambo"],
+    ["%kiyovu%", "Kiyovu"],
+    ["%kimihurura%", "Kimihurura"],
+    ["%kicukiro%", "Kicukiro"],
+  ];
+  for (const [pattern, district] of districtByAddress) {
+    await db
+      .update(providerProfiles)
+      .set({ district })
+      .where(and(isNull(providerProfiles.district), ilike(providerProfiles.address, pattern)));
+  }
+  await db
+    .update(providerProfiles)
+    .set({ district: "Kimihurura" })
+    .where(isNull(providerProfiles.district));
 
   console.log("✅ Seed complete!");
   console.log(`   Users: 5+ | Services: 19+ | Listings: 9+ | Bookings: 6 | Offers: 4`);

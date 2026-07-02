@@ -36,3 +36,20 @@ services:
         generateValue: true
       - key: CORS_ORIGINS
         sync: false
+      - key: EXPO_ACCESS_TOKEN
+        sync: false
+
+# Monolith alternative — ONE Render service serving both the web app and the
+# API (Express serves apps/web/dist automatically when it exists). Use this
+# instead of the two services above if you don't want Vercel:
+#
+#  - type: web
+#    name: hafi
+#    runtime: node
+#    region: frankfurt
+#    plan: free
+#    rootDir: .
+#    buildCommand: npm install && npm run web:build && npm run db:push --workspace=@hafi/api
+#    startCommand: npm run start --workspace=@hafi/api
+#    healthCheckPath: /health
+#    envVars: same as hafi-api above (CORS_ORIGINS can be omitted — same origin)

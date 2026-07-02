@@ -6,7 +6,7 @@ import {
   LOCALE_STORAGE_KEY,
   type Locale,
   type TranslationKey,
-} from "./index.js";
+} from "./index";
 
 export interface LocaleStorage {
   getItem: (key: string) => Promise<string | null> | string | null;

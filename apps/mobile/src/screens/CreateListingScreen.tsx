@@ -9,12 +9,13 @@ import {
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../context/AuthContext";
+import PhotoPicker from "../components/PhotoPicker";
 import { trpcCall } from "../lib/api";
 import { colors, radius, spacing } from "../theme";
 
 const CONDITIONS = ["new", "like_new", "good", "fair"] as const;
+const FALLBACK_IMAGE = "https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=400&q=80";
 
 export default function CreateListingScreen() {
   const { user } = useAuth();
@@ -23,6 +24,7 @@ export default function CreateListingScreen() {
   const [price, setPrice] = useState("");
   const [brand, setBrand] = useState("");
   const [condition, setCondition] = useState<(typeof CONDITIONS)[number]>("good");
+  const [photos, setPhotos] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
   const publish = async () => {
@@ -40,7 +42,7 @@ export default function CreateListingScreen() {
         brand: brand || undefined,
         location: user?.location || "Kigali",
         isNegotiable: true,
-        images: ["https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=400&q=80"],
+        images: photos.length > 0 ? photos : [FALLBACK_IMAGE],
         tags: ["local", "marketplace"],
       }, "mutation");
       Alert.alert("Listed! 🎉", "Your item is now live on the marketplace.");
@@ -48,6 +50,7 @@ export default function CreateListingScreen() {
       setDescription("");
       setPrice("");
       setBrand("");
+      setPhotos([]);
     } catch (e) {
       Alert.alert("Error", e instanceof Error ? e.message : "Failed to create listing");
     } finally {
@@ -60,11 +63,8 @@ export default function CreateListingScreen() {
       <Text style={styles.title}>Sell on Hafi</Text>
       <Text style={styles.subtitle}>List products, tools, parts, supplies, or inventory</Text>
 
-      <View style={styles.photoPlaceholder}>
-        <Ionicons name="camera" size={32} color={colors.purple} />
-        <Text style={styles.photoText}>Photo upload coming soon</Text>
-        <Text style={styles.photoHint}>Demo uses a placeholder image</Text>
-      </View>
+      <Text style={styles.label}>Photos</Text>
+      <PhotoPicker photos={photos} onChange={setPhotos} />
 
       <Text style={styles.label}>Title *</Text>
       <TextInput style={styles.input} placeholder="e.g. Drill set, spare part, salon chair" value={title} onChangeText={setTitle} />
@@ -114,18 +114,6 @@ const styles = StyleSheet.create({
   content: { padding: spacing.md, paddingBottom: spacing.xl * 2 },
   title: { fontSize: 26, fontWeight: "900", color: colors.purpleDark, marginTop: spacing.md },
   subtitle: { color: colors.gray400, marginBottom: spacing.lg },
-  photoPlaceholder: {
-    backgroundColor: colors.white,
-    borderRadius: radius.xl,
-    borderWidth: 2,
-    borderStyle: "dashed",
-    borderColor: "#C4B5FD",
-    padding: spacing.xl,
-    alignItems: "center",
-    marginBottom: spacing.lg,
-  },
-  photoText: { color: colors.purple, fontWeight: "700", marginTop: spacing.sm },
-  photoHint: { color: colors.gray400, fontSize: 12, marginTop: 4 },
   label: { fontWeight: "700", color: colors.purpleDark, marginBottom: spacing.sm, marginTop: spacing.sm },
   input: { backgroundColor: colors.white, borderRadius: radius.lg, padding: spacing.md, fontSize: 15, color: colors.gray800 },
   textarea: { minHeight: 100, textAlignVertical: "top" },
