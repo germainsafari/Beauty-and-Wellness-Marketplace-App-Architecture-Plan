@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BriefcaseBusiness, Home, Store } from "lucide-react";
+import { BriefcaseBusiness, Home, ShieldCheck, Store } from "lucide-react";
 import { useT } from "@hafi/i18n";
 import OnboardingCarousel from "../components/OnboardingCarousel";
 import LanguageSwitcher from "../components/LanguageSwitcher";
@@ -16,6 +16,9 @@ export default function RoleSelectionPage() {
   const [interest, setInterest] = useState("Beauty & wellness");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [adminPhone, setAdminPhone] = useState("+250");
+  const [adminError, setAdminError] = useState("");
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,6 +33,19 @@ export default function RoleSelectionPage() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not continue");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const adminSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setAdminError("");
+    try {
+      await signIn(adminPhone.trim());
+    } catch (err) {
+      setAdminError(err instanceof Error ? err.message : "Could not sign in");
     } finally {
       setLoading(false);
     }
@@ -171,6 +187,52 @@ export default function RoleSelectionPage() {
           <div className="mt-8 flex items-center gap-2 text-xs text-gray-400">
             <BriefcaseBusiness size={16} />
             {t("auth.trustedRwanda")}
+          </div>
+
+          <div className="mt-4">
+            {!showAdmin ? (
+              <button
+                type="button"
+                onClick={() => setShowAdmin(true)}
+                className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-hafi-purple transition-colors"
+              >
+                <ShieldCheck size={14} />
+                Admin sign-in
+              </button>
+            ) : (
+              <form onSubmit={adminSubmit} className="bg-white border border-purple-100 rounded-2xl p-4 shadow-sm space-y-3">
+                <p className="text-xs font-bold text-hafi-purple uppercase flex items-center gap-1.5">
+                  <ShieldCheck size={14} /> Admin sign-in
+                </p>
+                <input
+                  className="w-full bg-white border border-gray-200 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-hafi-purple/30"
+                  placeholder={t("auth.phonePlaceholder")}
+                  value={adminPhone}
+                  onChange={(e) => setAdminPhone(e.target.value)}
+                  required
+                />
+                {adminError && <p className="text-red-500 text-xs">{adminError}</p>}
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="flex-1 bg-hafi-dark text-white text-sm font-black py-2.5 rounded-xl disabled:opacity-60"
+                  >
+                    {loading ? t("common.pleaseWait") : t("common.signIn")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAdmin(false);
+                      setAdminError("");
+                    }}
+                    className="px-4 text-sm font-bold text-gray-400 hover:text-gray-600"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       </section>

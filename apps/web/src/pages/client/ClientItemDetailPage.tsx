@@ -11,6 +11,7 @@ import {
   Share2,
   Shield,
 } from "lucide-react";
+import BundleSheet, { type BundleQuote } from "../../components/BundleSheet";
 import ListingCard, { type ListingCardItem } from "../../components/ListingCard";
 import { formatPrice, trpcCall } from "../../lib/api";
 import { useApp } from "../../context/AppContext";
@@ -29,6 +30,16 @@ export default function ClientItemDetailPage() {
   const [phone, setPhone] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [bundleIds, setBundleIds] = useState<number[]>([]);
+  const [bundleQuote, setBundleQuote] = useState<BundleQuote | null>(null);
+  const [bundleSuccess, setBundleSuccess] = useState<{
+    reference: string;
+    status: string;
+    itemCount: number;
+    discount: number;
+    discountPercent: number;
+    total: number;
+  } | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -66,17 +77,39 @@ export default function ClientItemDetailPage() {
 
   const buyNow = async () => {
     setBusy(true);
+    setBundleSuccess(null);
     try {
-      const result = await trpcCall<{ payment: { status: string; externalReference: string } }>(
-        "commerce.buyNow",
-        { listingId: item.id, provider, phone: phone || undefined },
-        "mutation"
-      );
-      setMsg(
-        result.payment.status === "succeeded"
-          ? "Payment succeeded. The item is reserved for you."
-          : `Payment request sent. Reference: ${result.payment.externalReference}`
-      );
+      if (bundleIds.length > 0) {
+        const result = await trpcCall<{
+          payment: { status: string; externalReference: string };
+          quote: { subtotal: number; discount: number; discountPercent: number; total: number };
+          orders: { id: number }[];
+        }>(
+          "commerce.buyBundle",
+          { listingIds: [item.id, ...bundleIds], provider, phone: phone || undefined },
+          "mutation"
+        );
+        setMsg("");
+        setBundleSuccess({
+          reference: result.payment.externalReference,
+          status: result.payment.status,
+          itemCount: result.orders.length,
+          discount: result.quote.discount,
+          discountPercent: result.quote.discountPercent,
+          total: result.quote.total,
+        });
+      } else {
+        const result = await trpcCall<{ payment: { status: string; externalReference: string } }>(
+          "commerce.buyNow",
+          { listingId: item.id, provider, phone: phone || undefined },
+          "mutation"
+        );
+        setMsg(
+          result.payment.status === "succeeded"
+            ? "Payment succeeded. The item is reserved for you."
+            : `Payment request sent. Reference: ${result.payment.externalReference}`
+        );
+      }
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Could not start checkout");
     } finally {
@@ -231,6 +264,18 @@ export default function ClientItemDetailPage() {
             </div>
           )}
 
+          {user && user.id !== item.seller?.id && (
+            <BundleSheet
+              listingId={item.id}
+              sellerId={item.seller?.id}
+              sellerName={item.seller?.name}
+              onSelectionChange={(ids, quote) => {
+                setBundleIds(ids);
+                setBundleQuote(quote);
+              }}
+            />
+          )}
+
           <div className="flex items-start gap-3 p-4 bg-purple-50 rounded-xl text-sm">
             <Shield className="text-hafi-purple flex-shrink-0 mt-0.5" size={20} />
             <div>
@@ -238,6 +283,25 @@ export default function ClientItemDetailPage() {
               <p className="text-gray-600 mt-1">Pay through Hafi escrow. Refund if item isn't as described. 5% protection fee at checkout.</p>
             </div>
           </div>
+
+          {bundleSuccess && (
+            <div className="flex items-start gap-3 p-4 bg-emerald-50 rounded-xl text-sm">
+              <CheckCircle className="text-emerald-600 flex-shrink-0 mt-0.5" size={20} />
+              <div className="space-y-1">
+                <p className="font-bold text-emerald-700">
+                  {bundleSuccess.status === "succeeded"
+                    ? `Bundle payment succeeded — ${bundleSuccess.itemCount} items reserved for you.`
+                    : `Bundle payment request sent for ${bundleSuccess.itemCount} items.`}
+                </p>
+                {bundleSuccess.discount > 0 && (
+                  <p className="text-emerald-600 font-semibold">
+                    You saved {formatPrice(bundleSuccess.discount)} ({bundleSuccess.discountPercent}% bundle discount).
+                  </p>
+                )}
+                <p className="text-gray-600">Payment reference: {bundleSuccess.reference}</p>
+              </div>
+            </div>
+          )}
 
           {msg && <p className="text-emerald-600 font-semibold text-sm bg-emerald-50 px-4 py-2 rounded-xl">{msg}</p>}
 
@@ -281,7 +345,11 @@ export default function ClientItemDetailPage() {
                   disabled={busy}
                   className="flex-1 bg-gradient-to-r from-hafi-gold to-amber-400 text-white font-bold py-4 rounded-xl disabled:opacity-60 shadow-md"
                 >
-                  {busy ? "Processing..." : "Buy now"}
+                  {busy
+                    ? "Processing..."
+                    : bundleIds.length > 0
+                      ? `Buy bundle (${bundleIds.length + 1} items)${bundleQuote ? ` · ${formatPrice(bundleQuote.total)}` : ""}`
+                      : "Buy now"}
                 </button>
                 <button onClick={share} className="sm:w-14 border rounded-xl flex items-center justify-center py-4 hover:bg-gray-50">
                   <Share2 size={20} />

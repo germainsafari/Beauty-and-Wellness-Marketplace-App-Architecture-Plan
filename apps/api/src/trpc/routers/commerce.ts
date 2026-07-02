@@ -2,12 +2,14 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
   boostListing,
+  buyBundleNow,
   buyListingNow,
   createPaymentIntent,
   getLoyaltyLedger,
   getMyOrders,
   getPaymentById,
   quoteBundle,
+  redeemLoyaltyPoints,
   updatePaymentStatus,
   upsertBundleRule,
 } from "../../db/queries.js";
@@ -31,6 +33,25 @@ export const commerceRouter = router({
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: e instanceof Error ? e.message : "Could not create order",
+        });
+      }
+    }),
+
+  buyBundle: protectedProcedure
+    .input(
+      z.object({
+        listingIds: z.array(z.number()).min(2).max(10),
+        provider: paymentProvider.default("demo"),
+        phone: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await buyBundleNow({ ...input, buyerId: ctx.user.id });
+      } catch (e) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: e instanceof Error ? e.message : "Could not create bundle order",
         });
       }
     }),
@@ -104,6 +125,19 @@ export const commerceRouter = router({
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: e instanceof Error ? e.message : "Could not quote bundle",
+        });
+      }
+    }),
+
+  redeemPoints: protectedProcedure
+    .input(z.object({ points: z.number().int().min(50) }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await redeemLoyaltyPoints(ctx.user.id, input.points);
+      } catch (e) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: e instanceof Error ? e.message : "Could not redeem points",
         });
       }
     }),

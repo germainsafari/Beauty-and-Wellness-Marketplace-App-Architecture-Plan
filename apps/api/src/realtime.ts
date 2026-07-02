@@ -51,6 +51,10 @@ export function initRealtime(server: HttpServer) {
   return io;
 }
 
+export function emitChatRead(event: { conversationId: number; readerId: number }) {
+  io?.to(`conversation:${event.conversationId}`).emit("chat:read", event);
+}
+
 export function emitChatMessage(message: {
   conversationId: number;
   senderId: number;

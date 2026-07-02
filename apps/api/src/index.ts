@@ -12,6 +12,7 @@ import { ENV } from "./env.js";
 import { createContext } from "./trpc/trpc.js";
 import { appRouter } from "./trpc/router.js";
 import { initRealtime } from "./realtime.js";
+import { mountUploadRoutes } from "./uploads.js";
 
 const app = express();
 const server = createServer(app);
@@ -33,6 +34,10 @@ app.use(
     credentials: true,
   })
 );
+// Upload routes use their own body parser with a higher limit for base64
+// payloads, so they are mounted before the app-wide 1mb JSON parser.
+mountUploadRoutes(app);
+
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/", (_req, res) => {

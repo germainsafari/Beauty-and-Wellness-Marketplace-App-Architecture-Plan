@@ -73,8 +73,9 @@ export async function trpcCall<T>(
 
   try {
     if (method === "query") {
-      const wrapped = { json: input ?? null };
-      const inputParam = `?input=${encodeURIComponent(JSON.stringify(wrapped))}`;
+      // No transformer on the server: input goes raw in the query string.
+      const inputParam =
+        input === undefined ? "" : `?input=${encodeURIComponent(JSON.stringify(input))}`;
       const res = await fetch(`${base}/trpc/${path}${inputParam}`, { headers });
       return readTrpcResponse<T>(res, base);
     }

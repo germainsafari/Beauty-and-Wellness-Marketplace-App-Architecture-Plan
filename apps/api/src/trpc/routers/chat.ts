@@ -5,9 +5,10 @@ import {
   getConversationsByUser,
   getMessagesByConversation,
   getOrCreateConversation,
+  markConversationRead,
   sendMessage,
 } from "../../db/queries.js";
-import { emitChatMessage } from "../../realtime.js";
+import { emitChatMessage, emitChatRead } from "../../realtime.js";
 import { protectedProcedure, router } from "../trpc.js";
 
 export const chatRouter = router({
@@ -69,5 +70,17 @@ export const chatRouter = router({
       }
       emitChatMessage(message);
       return { success: true, message };
+    }),
+
+  markRead: protectedProcedure
+    .input(z.object({ conversationId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const convos = await getConversationsByUser(ctx.user.id);
+      if (!convos.some((c) => c.id === input.conversationId)) {
+        throw new TRPCError({ code: "FORBIDDEN" });
+      }
+      const unreadCount = await markConversationRead(input.conversationId, ctx.user.id);
+      emitChatRead({ conversationId: input.conversationId, readerId: ctx.user.id });
+      return { success: true, unreadCount };
     }),
 });

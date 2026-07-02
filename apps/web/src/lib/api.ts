@@ -63,8 +63,7 @@ export async function trpcCall<T>(
 
   try {
     if (method === "query") {
-      const wrapped = { json: input ?? null };
-      const params = `?input=${encodeURIComponent(JSON.stringify(wrapped))}`;
+      const params = input === undefined ? "" : `?input=${encodeURIComponent(JSON.stringify(input))}`;
       const res = await fetch(`${base}/trpc/${path}${params}`, { headers });
       return readTrpcResponse<T>(res, base);
     }

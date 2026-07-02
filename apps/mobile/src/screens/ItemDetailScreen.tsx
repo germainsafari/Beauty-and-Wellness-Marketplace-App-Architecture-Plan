@@ -13,7 +13,8 @@ import {
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import { useRoute, type RouteProp } from "@react-navigation/native";
+import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { trpcCall } from "../lib/api";
 import { colors, radius, spacing } from "../theme";
 import type { RootStackParamList } from "../navigation/types";
@@ -34,6 +35,7 @@ type ListingDetail = {
 
 export default function ItemDetailScreen() {
   const route = useRoute<RouteProp<RootStackParamList, "ItemDetail">>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [item, setItem] = useState<ListingDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [offerAmount, setOfferAmount] = useState("");
@@ -88,6 +90,20 @@ export default function ItemDetailScreen() {
       Alert.alert("Checkout failed", e instanceof Error ? e.message : "Could not start checkout");
     } finally {
       setBuying(false);
+    }
+  };
+
+  const messageSeller = async () => {
+    if (!item) return;
+    try {
+      const convo = await trpcCall<{ id: number }>(
+        "chat.startConversation",
+        { otherUserId: item.seller.id, type: "listing", referenceId: item.id },
+        "mutation"
+      );
+      navigation.navigate("ChatThread", { conversationId: convo.id, otherUserName: item.seller.name });
+    } catch (e) {
+      Alert.alert("Error", e instanceof Error ? e.message : "Could not start conversation");
     }
   };
 
@@ -148,6 +164,10 @@ export default function ItemDetailScreen() {
             </View>
             <Text style={styles.sellerLoc}>📍 {item.seller.location || "Rwanda"}</Text>
           </View>
+          <Pressable style={styles.messageBtn} onPress={messageSeller}>
+            <Ionicons name="chatbubble-ellipses" size={16} color={colors.white} />
+            <Text style={styles.messageBtnText}>Message</Text>
+          </Pressable>
         </View>
 
         <Text style={styles.sectionLabel}>Description</Text>
@@ -226,6 +246,8 @@ const styles = StyleSheet.create({
   sellerNameRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   sellerName: { fontWeight: "700", fontSize: 15, color: colors.purpleDark },
   sellerLoc: { fontSize: 12, color: colors.gray400, marginTop: 2 },
+  messageBtn: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.purple, borderRadius: radius.full, paddingHorizontal: 12, paddingVertical: 8 },
+  messageBtnText: { color: colors.white, fontWeight: "700", fontSize: 12 },
   sectionLabel: { fontWeight: "800", color: colors.purpleDark, marginTop: spacing.lg, marginBottom: spacing.sm },
   description: { color: colors.gray600, lineHeight: 22 },
   protection: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.lg, backgroundColor: "#EDE9FE", padding: spacing.md, borderRadius: radius.lg },

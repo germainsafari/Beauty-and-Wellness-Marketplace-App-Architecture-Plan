@@ -247,6 +247,15 @@ export const adminActions = pgTable("admin_actions", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const uploads = pgTable("uploads", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  kind: varchar("kind", { length: 30 }).default("verification").notNull(),
+  mimeType: varchar("mime_type", { length: 100 }).notNull(),
+  data: text("data").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const notifications = pgTable("notifications", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").references(() => users.id).notNull(),
@@ -275,5 +284,6 @@ export const aiMessages = pgTable("ai_messages", {
 });
 
 export type User = typeof users.$inferSelect;
+export type Upload = typeof uploads.$inferSelect;
 export type Listing = typeof listings.$inferSelect;
 export type Booking = typeof bookings.$inferSelect;

@@ -432,6 +432,30 @@ export async function sendMessage(data: {
   return msg;
 }
 
+export async function markConversationRead(conversationId: number, readerId: number) {
+  await db
+    .update(messages)
+    .set({ isRead: true })
+    .where(
+      and(
+        eq(messages.conversationId, conversationId),
+        eq(messages.isRead, false),
+        sql`${messages.senderId} != ${readerId}`
+      )
+    );
+  const [remaining] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.conversationId, conversationId),
+        eq(messages.isRead, false),
+        sql`${messages.senderId} != ${readerId}`
+      )
+    );
+  return remaining?.count ?? 0;
+}
+
 export async function getOrCreateConversation(
   userId1: number,
   userId2: number,
@@ -757,7 +781,12 @@ export async function updatePaymentStatus(
   if (!payment) return null;
   if (status === "succeeded") {
     if (payment.purpose === "order" && payment.referenceId) {
-      await markOrderPaid(payment.referenceId, payment.id);
+      const meta = payment.metadata as { bundle?: boolean; orderIds?: number[] } | null;
+      if (meta?.bundle && Array.isArray(meta.orderIds) && meta.orderIds.length > 0) {
+        await markBundlePaid(meta.orderIds, payment.id);
+      } else {
+        await markOrderPaid(payment.referenceId, payment.id);
+      }
     }
     if (payment.purpose === "booking" && payment.referenceId) {
       const [booking] = await db.select().from(bookings).where(eq(bookings.id, payment.referenceId)).limit(1);
@@ -934,6 +963,151 @@ export async function quoteBundle(userId: number, listingIds: number[]) {
     discount,
     total: subtotal - discount,
     discountPercent,
+  };
+}
+
+export async function buyBundleNow(data: {
+  listingIds: number[];
+  buyerId: number;
+  provider: "mtn_momo" | "airtel_money" | "stripe" | "demo";
+  phone?: string;
+}) {
+  const ids = [...new Set(data.listingIds)];
+  if (ids.length < 2) throw new Error("A bundle needs at least 2 items");
+
+  const rows = await db
+    .select({ listing: listings, seller: users })
+    .from(listings)
+    .innerJoin(users, eq(listings.sellerId, users.id))
+    .where(inArray(listings.id, ids));
+  if (rows.length !== ids.length) throw new Error("Some listings were not found");
+
+  const sellerId = rows[0].listing.sellerId;
+  if (!rows.every((r) => r.listing.sellerId === sellerId)) {
+    throw new Error("Bundles must come from one seller");
+  }
+  if (sellerId === data.buyerId) throw new Error("Cannot buy your own listings");
+  const unavailable = rows.find((r) => r.listing.status !== "active");
+  if (unavailable) throw new Error(`"${unavailable.listing.title}" is no longer available`);
+
+  const [rule] = await db
+    .select()
+    .from(bundleRules)
+    .where(and(eq(bundleRules.sellerId, sellerId), eq(bundleRules.isActive, true)))
+    .limit(1);
+  const discountPercent = rule && rows.length >= rule.minItems ? rule.discountPercent : 0;
+
+  let subtotal = 0;
+  let discount = 0;
+  let protectionFee = 0;
+  let totalAmount = 0;
+  const createdOrders = [];
+  for (const { listing, seller } of rows) {
+    const price = Number(listing.price);
+    const itemDiscount = Math.round((price * discountPercent) / 100);
+    const itemFee = Math.round((price - itemDiscount) * 0.05);
+    const itemTotal = price - itemDiscount + itemFee;
+    subtotal += price;
+    discount += itemDiscount;
+    protectionFee += itemFee;
+    totalAmount += itemTotal;
+
+    const [order] = await db
+      .insert(orders)
+      .values({
+        listingId: listing.id,
+        buyerId: data.buyerId,
+        sellerId,
+        subtotal: price.toFixed(2),
+        protectionFee: itemFee.toFixed(2),
+        discountAmount: itemDiscount.toFixed(2),
+        totalAmount: itemTotal.toFixed(2),
+        pickupLocation: listing.location ?? seller.location ?? "Kigali",
+      })
+      .returning();
+    createdOrders.push(order);
+  }
+
+  const orderIds = createdOrders.map((o) => o.id);
+  const payment = await createPaymentIntent({
+    userId: data.buyerId,
+    provider: data.provider,
+    purpose: "order",
+    referenceId: orderIds[0],
+    amount: totalAmount.toFixed(2),
+    phone: data.phone,
+    metadata: { bundle: true, orderIds, listingIds: ids, discountPercent },
+  });
+
+  await db.update(orders).set({ paymentId: payment.id }).where(inArray(orders.id, orderIds));
+  let finalOrders: typeof createdOrders = createdOrders.map((o) => ({ ...o, paymentId: payment.id }));
+  if (payment.status === "succeeded") {
+    finalOrders = await markBundlePaid(orderIds, payment.id);
+  }
+
+  await createNotification({
+    userId: sellerId,
+    type: "order_created",
+    title: "New bundle order",
+    body: `${rows.length} of your items sold together${
+      discountPercent > 0 ? ` with a ${discountPercent}% bundle discount` : ""
+    }.`,
+    actionUrl: "/merchant/listings",
+  });
+
+  return {
+    orders: finalOrders,
+    payment,
+    quote: { subtotal, discount, discountPercent, protectionFee, total: totalAmount },
+  };
+}
+
+export async function markBundlePaid(orderIds: number[], paymentId: number) {
+  if (orderIds.length === 0) return [];
+  const paid = await db
+    .update(orders)
+    .set({ status: "paid", paymentId, updatedAt: new Date() })
+    .where(inArray(orders.id, orderIds))
+    .returning();
+  if (paid.length === 0) return [];
+  await db
+    .update(listings)
+    .set({ status: "reserved" })
+    .where(inArray(listings.id, paid.map((o) => o.listingId)));
+  const total = paid.reduce((sum, o) => sum + Number(o.totalAmount), 0);
+  await awardLoyaltyPoints(
+    paid[0].buyerId,
+    Math.max(20, Math.floor(total / 1000)),
+    "bundle_order_paid",
+    "payment",
+    paymentId
+  );
+  return paid;
+}
+
+export async function redeemLoyaltyPoints(userId: number, points: number) {
+  if (!Number.isInteger(points) || points < 50) {
+    throw new Error("Minimum redemption is 50 points");
+  }
+  const user = await getUserById(userId);
+  if (!user) throw new Error("User not found");
+  const currentPoints = user.loyaltyPoints ?? 0;
+  if (currentPoints < points) {
+    throw new Error(`Insufficient points: you have ${currentPoints}, tried to redeem ${points}`);
+  }
+  const creditedAmount = points * 10;
+  const nextPoints = currentPoints - points;
+  const nextBalance = (Number(user.walletBalance ?? "0") + creditedAmount).toFixed(2);
+  await db
+    .update(users)
+    .set({ loyaltyPoints: nextPoints, walletBalance: nextBalance, updatedAt: new Date() })
+    .where(eq(users.id, userId));
+  await db.insert(loyaltyLedger).values({ userId, points: -points, reason: "redeemed" });
+  return {
+    loyaltyPoints: nextPoints,
+    walletBalance: nextBalance,
+    redeemedPoints: points,
+    creditedAmount: creditedAmount.toFixed(2),
   };
 }
 
