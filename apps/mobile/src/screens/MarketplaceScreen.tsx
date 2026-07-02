@@ -67,12 +67,12 @@ export default function MarketplaceScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Marketplace</Text>
-        <Text style={styles.subtitle}>Pre-loved beauty gems 💎</Text>
+        <Text style={styles.subtitle}>Local products, tools, parts, and supplies</Text>
         <View style={styles.searchRow}>
           <Ionicons name="search" size={18} color={colors.gray400} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search makeup, skincare, tools..."
+            placeholder="Search tools, parts, products..."
             placeholderTextColor={colors.gray400}
             value={search}
             onChangeText={setSearch}

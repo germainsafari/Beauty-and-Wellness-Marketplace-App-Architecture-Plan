@@ -29,30 +29,34 @@ type Listing = {
   isBumped: boolean;
 };
 
-const CATEGORIES = [
+const CATEGORIES_FALLBACK = [
   { label: "Hair", emoji: "💇‍♀️" },
   { label: "Skincare", emoji: "✨" },
-  { label: "Makeup", emoji: "💄" },
-  { label: "Nails", emoji: "💅" },
-  { label: "Lashes", emoji: "👁️" },
+  { label: "Electrician", emoji: "⚡" },
+  { label: "Massage", emoji: "💆" },
 ];
 
 export default function HomeScreen() {
   const { user } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [listings, setListings] = useState<Listing[]>([]);
+  const [categories, setCategories] = useState<{ label: string; emoji: string }[]>(CATEGORIES_FALLBACK);
   const [wallet, setWallet] = useState({ balance: "0", loyaltyPoints: 0 });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [items, bal] = await Promise.all([
+      const [items, bal, cats] = await Promise.all([
         trpcCall<Listing[]>("listings.list", { limit: 6 }),
         trpcCall<{ balance: string; loyaltyPoints: number }>("wallet.balance"),
+        trpcCall<{ id: number; name: string; icon: string | null }[]>("discovery.categories"),
       ]);
       setListings(items);
       setWallet(bal);
+      if (cats.length > 0) {
+        setCategories(cats.map((c) => ({ label: c.name, emoji: c.icon ?? "✨" })));
+      }
     } catch {
       /* offline fallback */
     } finally {
@@ -76,7 +80,7 @@ export default function HomeScreen() {
         <View style={styles.greetingRow}>
           <View>
             <Text style={styles.greeting}>Good day 👋</Text>
-            <Text style={styles.name}>{user?.name?.split(" ")[0] || "Beauty Lover"}</Text>
+            <Text style={styles.name}>{user?.name?.split(" ")[0] || "Hafi User"}</Text>
           </View>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{(user?.name?.[0] || "H").toUpperCase()}</Text>
@@ -98,18 +102,18 @@ export default function HomeScreen() {
 
       <View style={styles.quickActions}>
         {[
-          { label: "Book", icon: "calendar" as const, screen: "Bookings" as const, bg: "#EDE9FE" },
+          { label: "Discover", icon: "search" as const, action: "Discover" as const, bg: "#EDE9FE" },
+          { label: "Book", icon: "calendar" as const, screen: "Bookings" as const, bg: "#DBEAFE" },
           { label: "Shop", icon: "bag-handle" as const, screen: "Marketplace" as const, bg: "#FEF3C7" },
-          { label: "Sell", icon: "pricetag" as const, screen: "CreateListing" as const, bg: "#D1FAE5" },
           { label: "AI", icon: "sparkles" as const, screen: "AI" as const, bg: "#FCE7F3" },
         ].map((a) => (
           <Pressable
             key={a.label}
             style={styles.actionBtn}
             onPress={() => {
-              if (a.screen === "CreateListing") navigation.navigate("CreateListing");
-              else if (a.screen === "AI") navigation.navigate("Main", { screen: "AI" });
-              else navigation.navigate("Main", { screen: a.screen });
+              if ("action" in a && a.action === "Discover") navigation.navigate("Discover");
+              else if ("screen" in a && a.screen === "AI") navigation.navigate("Main", { screen: "AI" });
+              else if ("screen" in a) navigation.navigate("Main", { screen: a.screen });
             }}
           >
             <View style={[styles.actionIcon, { backgroundColor: a.bg }]}>
@@ -122,12 +126,8 @@ export default function HomeScreen() {
 
       <Text style={styles.sectionTitle}>Browse Categories</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
-        {CATEGORIES.map((c) => (
-          <Pressable
-            key={c.label}
-            style={styles.catPill}
-            onPress={() => navigation.navigate("Main", { screen: "Marketplace" })}
-          >
+        {categories.map((c) => (
+          <Pressable key={c.label} style={styles.catPill} onPress={() => navigation.navigate("Discover")}>
             <Text style={styles.catEmoji}>{c.emoji}</Text>
             <Text style={styles.catLabel}>{c.label}</Text>
           </Pressable>

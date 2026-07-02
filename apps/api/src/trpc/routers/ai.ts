@@ -8,6 +8,7 @@ import {
   getWalletBalance,
   markAllNotificationsRead,
 } from "../../db/queries.js";
+import { AI_GREETINGS, isLocale } from "@hafi/i18n";
 import { chatWithAgent, getBeautySuggestions } from "../../services/aiAgent.js";
 import { protectedProcedure, publicProcedure, router } from "../trpc.js";
 
@@ -19,14 +20,18 @@ export const aiRouter = router({
     .query(({ input }) => getAiMessages(input.sessionId)),
 
   createSession: protectedProcedure
-    .input(z.object({ title: z.string().optional() }).optional())
+    .input(
+      z
+        .object({
+          title: z.string().optional(),
+          locale: z.enum(["en", "rw", "fr", "sw"]).optional(),
+        })
+        .optional()
+    )
     .mutation(async ({ ctx, input }) => {
+      const locale = input?.locale && isLocale(input.locale) ? input.locale : "en";
       const session = await createAiSession(ctx.user.id, input?.title);
-      await addAiMessage(
-        session.id,
-        "assistant",
-        "Hey bestie! 💜 I'm Hafi AI — your beauty concierge. Ask me about salon bookings, marketplace finds, skincare tips, or glow-up ideas!"
-      );
+      await addAiMessage(session.id, "assistant", AI_GREETINGS[locale]);
       return session;
     }),
 
@@ -35,6 +40,7 @@ export const aiRouter = router({
       z.object({
         sessionId: z.number(),
         message: z.string().min(1).max(2000),
+        locale: z.enum(["en", "rw", "fr", "sw"]).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -48,9 +54,11 @@ export const aiRouter = router({
           content: m.content,
         }));
 
+      const locale = input.locale && isLocale(input.locale) ? input.locale : "en";
       const reply = await chatWithAgent(messages, {
         name: ctx.user.name,
         location: ctx.user.location ?? undefined,
+        locale,
       });
 
       await addAiMessage(input.sessionId, "assistant", reply);

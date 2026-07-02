@@ -5,12 +5,12 @@ export default function MerchantCalendarPage() {
   const [bookings, setBookings] = useState<any[]>([]);
 
   useEffect(() => {
-    trpcCall("merchant.calendar").then(setBookings).catch(() => {});
+    trpcCall<any[]>("merchant.calendar").then(setBookings).catch(() => {});
   }, []);
 
   const confirm = (id: number, status: string) => {
     trpcCall("merchant.updateBookingStatus", { id, status }, "mutation").then(() =>
-      trpcCall("merchant.calendar").then(setBookings)
+      trpcCall<any[]>("merchant.calendar").then(setBookings)
     );
   };
 

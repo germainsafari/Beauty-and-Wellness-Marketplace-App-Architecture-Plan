@@ -19,6 +19,7 @@ type AppContextType = {
   loading: boolean;
   selectedRole: UserRole | null;
   setSelectedRole: (role: UserRole) => void;
+  signIn: (phone: string) => Promise<void>;
   login: (name: string, phone: string, role: UserRole) => Promise<void>;
   logout: () => void;
   switchRole: (role: UserRole) => Promise<void>;
@@ -68,7 +69,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     );
     setToken(result.token);
     setUser(result.user);
-    setSelectedRole(role);
+    setSelectedRole(result.user.role === "provider" ? "provider" : "customer");
+  }, []);
+
+  const signIn = useCallback(async (phone: string) => {
+    const result = await trpcCall<{ token: string; user: User }>(
+      "auth.signIn",
+      { phone },
+      "mutation"
+    );
+    setToken(result.token);
+    setUser(result.user);
+    setSelectedRole(result.user.role === "provider" ? "provider" : "customer");
   }, []);
 
   const switchRole = useCallback(async (role: UserRole) => {
@@ -86,7 +98,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppContext.Provider
-      value={{ user, loading, selectedRole, setSelectedRole, login, logout, switchRole }}
+      value={{ user, loading, selectedRole, setSelectedRole, signIn, login, logout, switchRole }}
     >
       {children}
     </AppContext.Provider>

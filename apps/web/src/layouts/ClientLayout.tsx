@@ -8,24 +8,28 @@ import {
   Sparkles,
   User,
 } from "lucide-react";
+import type { TranslationKey } from "@hafi/i18n";
+import { useT } from "@hafi/i18n";
 import { useApp } from "../context/AppContext";
+import NotificationBell from "../components/NotificationBell";
+import LanguageSwitcher from "../components/LanguageSwitcher";
 
-const nav = [
-  { to: "/client", icon: Home, label: "Home", end: true },
-  { to: "/client/discover", icon: Search, label: "Discover" },
-  { to: "/client/marketplace", icon: ShoppingBag, label: "Marketplace" },
-  { to: "/client/bookings", icon: Calendar, label: "Bookings" },
-  { to: "/client/messages", icon: MessageCircle, label: "Messages" },
-  { to: "/client/ai", icon: Sparkles, label: "Hafi AI" },
-  { to: "/client/profile", icon: User, label: "Profile" },
+const nav: { to: string; icon: typeof Home; labelKey: TranslationKey; end?: boolean }[] = [
+  { to: "/client", icon: Home, labelKey: "nav.home", end: true },
+  { to: "/client/discover", icon: Search, labelKey: "nav.discover" },
+  { to: "/client/marketplace", icon: ShoppingBag, labelKey: "nav.marketplace" },
+  { to: "/client/bookings", icon: Calendar, labelKey: "nav.bookings" },
+  { to: "/client/messages", icon: MessageCircle, labelKey: "nav.messages" },
+  { to: "/client/ai", icon: Sparkles, labelKey: "nav.ai" },
+  { to: "/client/profile", icon: User, labelKey: "nav.profile" },
 ];
 
 export default function ClientLayout() {
   const { user } = useApp();
+  const t = useT();
 
   return (
     <div className="min-h-screen bg-hafi-bg">
-      {/* Desktop sidebar */}
       <aside className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col bg-white border-r border-purple-100 z-40">
         <div className="p-6 border-b border-purple-50">
           <div className="flex items-center gap-3">
@@ -34,12 +38,12 @@ export default function ClientLayout() {
             </div>
             <div>
               <p className="font-black font-display text-hafi-dark">Hafi</p>
-              <p className="text-xs text-gray-400">Client</p>
+              <p className="text-xs text-gray-400">{t("common.client")}</p>
             </div>
           </div>
         </div>
         <nav className="flex-1 p-4 space-y-1">
-          {nav.map(({ to, icon: Icon, label, end }) => (
+          {nav.map(({ to, icon: Icon, labelKey, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -51,21 +55,28 @@ export default function ClientLayout() {
               }
             >
               <Icon size={20} />
-              {label}
+              {t(labelKey)}
             </NavLink>
           ))}
         </nav>
-        <div className="p-4 border-t border-purple-50 text-sm text-gray-500">
-          {user?.name}
+        <div className="p-4 border-t border-purple-50 space-y-3">
+          <LanguageSwitcher compact />
+          <div className="text-sm text-gray-500 flex items-center justify-between gap-3">
+            <span className="truncate">{user?.name}</span>
+            <NotificationBell />
+          </div>
         </div>
       </aside>
 
-      {/* Main content */}
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-purple-100 lg:hidden px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-hafi-purple text-white flex items-center justify-center font-black">H</div>
-            <span className="font-black font-display">Hafi Client</span>
+        <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-purple-100 lg:hidden px-4 py-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-hafi-purple text-white flex items-center justify-center font-black flex-shrink-0">H</div>
+            <span className="font-black font-display truncate">Hafi</span>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <LanguageSwitcher compact />
+            <NotificationBell />
           </div>
         </header>
 
@@ -74,10 +85,9 @@ export default function ClientLayout() {
         </main>
       </div>
 
-      {/* Mobile bottom nav */}
       <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-white border-t border-purple-100 z-50 safe-area-pb">
         <div className="flex justify-around py-2 max-w-lg mx-auto">
-          {nav.slice(0, 5).map(({ to, icon: Icon, label, end }) => (
+          {nav.slice(0, 5).map(({ to, icon: Icon, labelKey, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -87,7 +97,7 @@ export default function ClientLayout() {
               }
             >
               <Icon size={22} />
-              <span className="text-[10px] font-semibold">{label}</span>
+              <span className="text-[10px] font-semibold">{t(labelKey)}</span>
             </NavLink>
           ))}
         </div>

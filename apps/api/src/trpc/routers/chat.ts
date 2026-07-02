@@ -1,11 +1,13 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
+  createNotification,
   getConversationsByUser,
   getMessagesByConversation,
   getOrCreateConversation,
   sendMessage,
 } from "../../db/queries.js";
+import { emitChatMessage } from "../../realtime.js";
 import { protectedProcedure, router } from "../trpc.js";
 
 export const chatRouter = router({
@@ -48,11 +50,24 @@ export const chatRouter = router({
       if (!convos.some((c) => c.id === input.conversationId)) {
         throw new TRPCError({ code: "FORBIDDEN" });
       }
-      await sendMessage({
+      const message = await sendMessage({
         conversationId: input.conversationId,
         senderId: ctx.user.id,
         body: input.body,
       });
-      return { success: true };
+      const convo = convos.find((c) => c.id === input.conversationId);
+      const recipientId =
+        convo?.participant1Id === ctx.user.id ? convo.participant2Id : convo?.participant1Id;
+      if (recipientId) {
+        await createNotification({
+          userId: recipientId,
+          type: "message",
+          title: `New message from ${ctx.user.name}`,
+          body: input.body.length > 120 ? `${input.body.slice(0, 117)}...` : input.body,
+          actionUrl: "/client/messages",
+        });
+      }
+      emitChatMessage(message);
+      return { success: true, message };
     }),
 });

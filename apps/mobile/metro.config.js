@@ -11,5 +11,8 @@ config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, "node_modules"),
   path.resolve(workspaceRoot, "node_modules"),
 ];
+config.resolver.extraNodeModules = {
+  "@hafi/i18n": path.resolve(workspaceRoot, "packages/i18n"),
+};
 
 module.exports = config;

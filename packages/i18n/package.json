@@ -1,0 +1,23 @@
+{
+  "name": "@hafi/i18n",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./react": {
+      "types": "./src/react.tsx",
+      "import": "./src/react.tsx",
+      "default": "./src/react.tsx"
+    }
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  }
+}

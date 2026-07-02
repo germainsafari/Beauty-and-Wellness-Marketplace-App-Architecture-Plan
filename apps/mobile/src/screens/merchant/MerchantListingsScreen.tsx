@@ -11,7 +11,7 @@ export default function MerchantListingsScreen() {
   const [listings, setListings] = useState<any[]>([]);
 
   useEffect(() => {
-    if (user) trpcCall("listings.list", { sellerId: user.id, limit: 50 }).then(setListings).catch(() => {});
+    if (user) trpcCall<any[]>("listings.list", { sellerId: user.id, limit: 50 }).then(setListings).catch(() => {});
   }, [user]);
 
   return (

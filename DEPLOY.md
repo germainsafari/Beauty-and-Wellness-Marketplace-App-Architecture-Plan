@@ -116,3 +116,52 @@ Requirements:
 - [ ] Hafi AI chat responds (OpenAI key set on Render)
 - [ ] Marketplace listings load from Neon DB
 - [ ] CORS_ORIGINS includes your Vercel domain
+
+---
+
+## 6. Production MVP Addendum
+
+The Render API is a monolith for the MVP. It serves health checks, tRPC, Socket.io realtime chat, payment state, verification review, boost/bundle commerce, loyalty, and push-token registration.
+
+Before deploying, run:
+
+```bash
+npm run verify:prod
+```
+
+Additional production environment variables:
+
+```bash
+PAYMENT_MODE=demo
+MTN_MOMO_SUBSCRIPTION_KEY=
+AIRTEL_MONEY_CLIENT_ID=
+STRIPE_SECRET_KEY=
+EXPO_ACCESS_TOKEN=
+EXPO_PROJECT_ID=<your-eas-project-id>
+```
+
+Demo data:
+
+```bash
+npm run db:push
+npm run db:seed
+```
+
+Demo accounts:
+
+| Role | Name | Phone |
+|------|------|-------|
+| Admin | Hafi Admin | `+250780000000` |
+| Client | Zara Glow | `+250780000002` |
+| Client | Bella Cosmetics | `+250780000004` |
+| Merchant | Amara Beauty | `+250780000001` |
+| Merchant | Lux Hair Studio | `+250780000003` |
+
+Extra post-deploy checks:
+
+- [ ] Admin demo login opens `/admin`
+- [ ] Socket.io connects on the web messages screen
+- [ ] Demo checkout creates an order and payment
+- [ ] Merchant boost moves a listing above normal listings
+- [ ] Verification submission appears in the admin queue
+- [ ] Expo Go opens with `EXPO_PUBLIC_API_URL` pointed to the reachable API

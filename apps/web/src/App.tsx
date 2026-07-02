@@ -1,4 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { LocaleProvider } from "@hafi/i18n";
 import { AppProvider, useApp } from "./context/AppContext";
 import RoleSelectionPage from "./pages/RoleSelectionPage";
 import ClientLayout from "./layouts/ClientLayout";
@@ -21,6 +22,7 @@ import MerchantOffersPage from "./pages/merchant/MerchantOffersPage";
 import MerchantAnalyticsPage from "./pages/merchant/MerchantAnalyticsPage";
 import MerchantProfilePage from "./pages/merchant/MerchantProfilePage";
 import MerchantMessagesPage from "./pages/merchant/MerchantMessagesPage";
+import AdminPage from "./pages/admin/AdminPage";
 
 function AppRoutes() {
   const { user, loading, selectedRole } = useApp();
@@ -34,6 +36,15 @@ function AppRoutes() {
   }
 
   if (!user) return <RoleSelectionPage />;
+
+  if (user.role === "admin") {
+    return (
+      <Routes>
+        <Route path="/admin" element={<AdminPage />} />
+        <Route path="*" element={<Navigate to="/admin" replace />} />
+      </Routes>
+    );
+  }
 
   if (selectedRole === "provider") {
     return (
@@ -74,10 +85,12 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <AppProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
-    </AppProvider>
+    <LocaleProvider>
+      <AppProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </AppProvider>
+    </LocaleProvider>
   );
 }

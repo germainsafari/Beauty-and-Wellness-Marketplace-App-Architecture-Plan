@@ -1,6 +1,7 @@
 export type RootStackParamList = {
   Welcome: undefined;
   Main: { screen?: keyof MainTabParamList } | undefined;
+  Discover: undefined;
   ItemDetail: { id: number };
   CreateListing: undefined;
 };

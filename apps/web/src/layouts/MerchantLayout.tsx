@@ -1,20 +1,21 @@
 import { NavLink, Outlet } from "react-router-dom";
 import {
   BarChart3,
+  BriefcaseBusiness,
   Calendar,
   LayoutDashboard,
   MessageCircle,
   Package,
-  Scissors,
   Tag,
   User,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import NotificationBell from "../components/NotificationBell";
 
 const nav = [
   { to: "/merchant", icon: LayoutDashboard, label: "Dashboard", end: true },
   { to: "/merchant/calendar", icon: Calendar, label: "Calendar" },
-  { to: "/merchant/services", icon: Scissors, label: "Services" },
+  { to: "/merchant/services", icon: BriefcaseBusiness, label: "Services" },
   { to: "/merchant/listings", icon: Package, label: "Listings" },
   { to: "/merchant/offers", icon: Tag, label: "Offers" },
   { to: "/merchant/analytics", icon: BarChart3, label: "Analytics" },
@@ -56,15 +57,19 @@ export default function MerchantLayout() {
             </NavLink>
           ))}
         </nav>
-        <div className="p-4 border-t border-white/10 text-sm text-purple-300">{user?.name}</div>
+        <div className="p-4 border-t border-white/10 text-sm text-purple-300 flex items-center justify-between gap-3">
+          <span className="truncate">{user?.name}</span>
+          <NotificationBell />
+        </div>
       </aside>
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-30 bg-hafi-dark text-white lg:hidden px-4 py-3">
+        <header className="sticky top-0 z-30 bg-hafi-dark text-white lg:hidden px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-hafi-gold text-hafi-dark flex items-center justify-center font-black">H</div>
             <span className="font-black font-display">Hafi Merchant</span>
           </div>
+          <NotificationBell />
         </header>
 
         <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-4 lg:py-8 pb-24 lg:pb-8">

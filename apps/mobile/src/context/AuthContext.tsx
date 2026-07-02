@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import * as Notifications from "expo-notifications";
 import * as SecureStore from "expo-secure-store";
 import { clearToken, getToken, setToken, trpcCall } from "../lib/api";
 
@@ -11,6 +12,8 @@ export type User = {
   isVerified: boolean;
   loyaltyPoints: number;
   walletBalance: string;
+  location: string | null;
+  bio: string | null;
 };
 
 type AuthContextType = {
@@ -18,6 +21,7 @@ type AuthContextType = {
   loading: boolean;
   activeRole: UserRole;
   setActiveRole: (r: UserRole) => void;
+  signIn: (phone: string) => Promise<void>;
   login: (name: string, phone: string, role: UserRole) => Promise<void>;
   logout: () => Promise<void>;
   switchRole: (role: UserRole) => Promise<void>;
@@ -57,6 +61,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const permissions = await Notifications.getPermissionsAsync();
+        const finalPermissions =
+          permissions.status === "granted" ? permissions : await Notifications.requestPermissionsAsync();
+        if (finalPermissions.status !== "granted") return;
+        const token = await Notifications.getExpoPushTokenAsync();
+        await trpcCall("push.registerToken", { platform: "expo", token: token.data }, "mutation");
+      } catch {
+        /* Push tokens are best-effort in Expo Go/local dev. */
+      }
+    })();
+  }, [user]);
+
   const login = useCallback(async (name: string, phone: string, role: UserRole) => {
     const result = await trpcCall<{ token: string; user: User }>(
       "auth.login",
@@ -65,7 +85,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
     await setToken(result.token);
     setUser(result.user);
-    await setActiveRole(role);
+    await setActiveRole(result.user.role === "provider" ? "provider" : "customer");
+  }, []);
+
+  const signIn = useCallback(async (phone: string) => {
+    const result = await trpcCall<{ token: string; user: User }>(
+      "auth.signIn",
+      { phone },
+      "mutation"
+    );
+    await setToken(result.token);
+    setUser(result.user);
+    await setActiveRole(result.user.role === "provider" ? "provider" : "customer");
   }, []);
 
   const switchRole = useCallback(async (role: UserRole) => {
@@ -82,7 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, activeRole, setActiveRole, login, logout, switchRole }}>
+    <AuthContext.Provider value={{ user, loading, activeRole, setActiveRole, signIn, login, logout, switchRole }}>
       {children}
     </AuthContext.Provider>
   );

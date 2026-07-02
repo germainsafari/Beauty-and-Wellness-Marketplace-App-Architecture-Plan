@@ -38,6 +38,26 @@ function networkErrorMessage(base: string): string {
   return `Cannot reach API at ${base}. Ensure npm run api is running and your phone is on the same Wi‑Fi.`;
 }
 
+async function readTrpcResponse<T>(res: Response, base: string): Promise<T> {
+  const text = await res.text();
+  if (!text.trim()) {
+    if (res.status >= 500 || res.status === 502 || res.status === 503) {
+      throw new Error(networkErrorMessage(base));
+    }
+    throw new Error(`Empty response from API (${res.status})`);
+  }
+
+  let json: TrpcResult<T> | TrpcError;
+  try {
+    json = JSON.parse(text) as TrpcResult<T> | TrpcError;
+  } catch {
+    throw new Error(networkErrorMessage(base));
+  }
+
+  if ("error" in json) throw new Error(parseTrpcError(json));
+  return json.result.data;
+}
+
 export async function trpcCall<T>(
   path: string,
   input?: unknown,
@@ -56,9 +76,7 @@ export async function trpcCall<T>(
       const wrapped = { json: input ?? null };
       const inputParam = `?input=${encodeURIComponent(JSON.stringify(wrapped))}`;
       const res = await fetch(`${base}/trpc/${path}${inputParam}`, { headers });
-      const json = (await res.json()) as TrpcResult<T> | TrpcError;
-      if ("error" in json) throw new Error(parseTrpcError(json));
-      return json.result.data;
+      return readTrpcResponse<T>(res, base);
     }
 
     const res = await fetch(`${base}/trpc/${path}`, {
@@ -66,11 +84,9 @@ export async function trpcCall<T>(
       headers,
       body: JSON.stringify(input ?? null),
     });
-    const json = (await res.json()) as TrpcResult<T> | TrpcError;
-    if ("error" in json) throw new Error(parseTrpcError(json));
-    return json.result.data;
+    return readTrpcResponse<T>(res, base);
   } catch (e) {
-    if (e instanceof TypeError && String(e.message).includes("Network request failed")) {
+    if (e instanceof TypeError) {
       throw new Error(networkErrorMessage(base));
     }
     throw e;

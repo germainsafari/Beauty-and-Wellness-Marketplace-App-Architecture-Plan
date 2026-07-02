@@ -1,22 +1,46 @@
 import { useState } from "react";
-import { Calendar, ShoppingBag, Sparkles, Store } from "lucide-react";
+import { BriefcaseBusiness, Home, Store } from "lucide-react";
+import { useT } from "@hafi/i18n";
+import OnboardingCarousel from "../components/OnboardingCarousel";
+import LanguageSwitcher from "../components/LanguageSwitcher";
+import { DEMO_ACCOUNTS } from "../lib/onboarding";
 import { useApp, type UserRole } from "../context/AppContext";
 
 export default function RoleSelectionPage() {
-  const { login, setSelectedRole, selectedRole } = useApp();
+  const { login, signIn, setSelectedRole, selectedRole } = useApp();
+  const t = useT();
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [role, setRole] = useState<UserRole>(selectedRole ?? "customer");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("+250");
+  const [interest, setInterest] = useState("Beauty & wellness");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
     try {
-      setSelectedRole(role);
-      await login(name.trim(), phone.trim(), role);
+      if (mode === "signin") {
+        await signIn(phone.trim());
+      } else {
+        setSelectedRole(role);
+        await login(name.trim(), phone.trim(), role);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not continue");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const quickSignIn = async (account: (typeof DEMO_ACCOUNTS)[number]) => {
+    setPhone(account.phone);
+    setLoading(true);
+    setError("");
+    try {
+      await signIn(account.phone);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not sign in");
     } finally {
@@ -25,80 +49,105 @@ export default function RoleSelectionPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row">
-      {/* Hero — full width on mobile, half on desktop */}
-      <div className="lg:w-1/2 bg-gradient-to-br from-hafi-dark via-hafi-mid to-purple-800 text-white p-8 lg:p-16 flex flex-col justify-center">
-        <div className="max-w-md mx-auto lg:mx-0 w-full">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-hafi-light to-hafi-purple flex items-center justify-center mb-8 shadow-2xl">
-            <span className="text-3xl font-black font-display">H</span>
+    <div className="min-h-screen grid lg:grid-cols-2 bg-hafi-bg">
+      <OnboardingCarousel />
+
+      <section className="flex items-center px-6 py-10 sm:px-12 lg:px-16">
+        <div className="w-full max-w-md mx-auto">
+          <div className="inline-grid grid-cols-2 bg-white border border-purple-100 rounded-2xl p-1 mb-4 w-full shadow-sm">
+            <button
+              type="button"
+              onClick={() => setMode("signin")}
+              className={`px-5 py-3 rounded-xl text-sm font-black ${mode === "signin" ? "bg-hafi-purple text-white shadow" : "text-gray-500"}`}
+            >
+              {t("common.signIn")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("signup")}
+              className={`px-5 py-3 rounded-xl text-sm font-black ${mode === "signup" ? "bg-hafi-purple text-white shadow" : "text-gray-500"}`}
+            >
+              {t("common.createAccount")}
+            </button>
           </div>
-          <h1 className="text-4xl lg:text-5xl font-black font-display mb-4 leading-tight">
-            Beauty & wellness, your way
-          </h1>
-          <p className="text-purple-200 text-lg mb-8 leading-relaxed">
-            Book salon appointments like Booksy. Shop pre-loved beauty like Vinted. One platform for Rwanda's glow-up generation.
+
+          <LanguageSwitcher />
+
+          <h2 className="text-3xl font-black font-display text-hafi-dark mt-6">
+            {mode === "signin" ? t("common.welcomeBack") : t("common.joinHafi")}
+          </h2>
+          <p className="text-gray-500 mt-2 mb-6">
+            {mode === "signin" ? t("auth.signInHint") : t("auth.signUpHint")}
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
-            {[
-              { icon: Calendar, text: "Book 24/7" },
-              { icon: ShoppingBag, text: "Shop & sell" },
-              { icon: Sparkles, text: "AI concierge" },
-            ].map(({ icon: Icon, text }) => (
-              <div key={text} className="flex items-center gap-2 text-purple-100">
-                <Icon size={18} className="text-hafi-gold" />
-                {text}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
 
-      {/* Form */}
-      <div className="lg:w-1/2 flex items-center justify-center p-8 lg:p-16 bg-white">
-        <div className="w-full max-w-md">
-          <h2 className="text-2xl font-black font-display text-hafi-dark mb-2">Get started</h2>
-          <p className="text-gray-500 mb-8">Choose how you'll use Hafi</p>
+          {mode === "signin" && (
+            <div className="grid grid-cols-2 gap-2 mb-6">
+              {DEMO_ACCOUNTS.map((account) => (
+                <button
+                  key={account.phone}
+                  type="button"
+                  onClick={() => quickSignIn(account)}
+                  className="text-left bg-white border border-purple-100 rounded-2xl px-4 py-3 hover:border-hafi-purple hover:bg-purple-50 transition-colors shadow-sm"
+                >
+                  <p className="text-[10px] font-bold text-hafi-purple uppercase">{account.label}</p>
+                  <p className="font-black text-sm">{account.name}</p>
+                </button>
+              ))}
+            </div>
+          )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-            <button
-              type="button"
-              onClick={() => setRole("customer")}
-              className={`p-5 rounded-2xl border-2 text-left transition-all ${
-                role === "customer"
-                  ? "border-hafi-purple bg-purple-50 shadow-md"
-                  : "border-gray-100 hover:border-purple-200"
-              }`}
-            >
-              <Calendar className={`w-8 h-8 mb-3 ${role === "customer" ? "text-hafi-purple" : "text-gray-400"}`} />
-              <p className="font-bold text-hafi-dark">I'm a Client</p>
-              <p className="text-xs text-gray-500 mt-1">Book services & shop marketplace</p>
-            </button>
-            <button
-              type="button"
-              onClick={() => setRole("provider")}
-              className={`p-5 rounded-2xl border-2 text-left transition-all ${
-                role === "provider"
-                  ? "border-hafi-gold bg-amber-50 shadow-md"
-                  : "border-gray-100 hover:border-amber-200"
-              }`}
-            >
-              <Store className={`w-8 h-8 mb-3 ${role === "provider" ? "text-hafi-gold" : "text-gray-400"}`} />
-              <p className="font-bold text-hafi-dark">I'm a Merchant</p>
-              <p className="text-xs text-gray-500 mt-1">Run salon & sell products</p>
-            </button>
-          </div>
+          <form onSubmit={submit} className="space-y-4">
+            {mode === "signup" && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setRole("customer")}
+                    className={`p-4 rounded-2xl border-2 text-left transition-all ${role === "customer" ? "border-hafi-purple bg-purple-50 shadow-sm" : "border-gray-100 bg-white"}`}
+                  >
+                    <Home className="text-hafi-purple mb-2" size={22} />
+                    <p className="font-black text-sm">{t("common.client")}</p>
+                    <p className="text-[11px] text-gray-500">{t("auth.bookAndShop")}</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRole("provider")}
+                    className={`p-4 rounded-2xl border-2 text-left transition-all ${role === "provider" ? "border-hafi-gold bg-amber-50 shadow-sm" : "border-gray-100 bg-white"}`}
+                  >
+                    <Store className="text-hafi-gold mb-2" size={22} />
+                    <p className="font-black text-sm">{t("common.merchant")}</p>
+                    <p className="text-[11px] text-gray-500">{t("auth.offerServices")}</p>
+                  </button>
+                </div>
+                <input
+                  className="w-full bg-white border border-gray-200 rounded-2xl px-4 py-3.5 outline-none focus:ring-2 focus:ring-hafi-purple/30"
+                  placeholder={t("auth.namePlaceholder")}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                />
+                <select
+                  className="w-full bg-white border border-gray-200 rounded-2xl px-4 py-3.5 outline-none"
+                  value={interest}
+                  onChange={(e) => setInterest(e.target.value)}
+                >
+                  {[
+                    "Beauty & wellness",
+                    "Home services",
+                    "Auto repair",
+                    "Cleaning",
+                    "Retail marketplace",
+                    "Other trades",
+                  ].map((value) => (
+                    <option key={value}>{value}</option>
+                  ))}
+                </select>
+              </>
+            )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
             <input
-              className="w-full border border-gray-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-hafi-purple/30"
-              placeholder="Full name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-            <input
-              className="w-full border border-gray-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-hafi-purple/30"
-              placeholder="+250 7XX XXX XXX"
+              className="w-full bg-white border border-gray-200 rounded-2xl px-4 py-3.5 outline-none focus:ring-2 focus:ring-hafi-purple/30"
+              placeholder={t("auth.phonePlaceholder")}
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               required
@@ -107,13 +156,24 @@ export default function RoleSelectionPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-hafi-purple to-hafi-light text-white font-bold py-4 rounded-xl hover:opacity-95 disabled:opacity-60"
+              className="w-full bg-gradient-to-r from-hafi-purple to-violet-600 text-white font-black py-4 rounded-2xl hover:shadow-lg disabled:opacity-60"
             >
-              {loading ? "Signing in..." : role === "provider" ? "Open Merchant Dashboard" : "Enter as Client"}
+              {loading
+                ? t("common.pleaseWait")
+                : mode === "signin"
+                  ? t("common.signIn")
+                  : role === "provider"
+                    ? t("auth.createMerchant")
+                    : t("auth.createClient")}
             </button>
           </form>
+
+          <div className="mt-8 flex items-center gap-2 text-xs text-gray-400">
+            <BriefcaseBusiness size={16} />
+            {t("auth.trustedRwanda")}
+          </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

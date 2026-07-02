@@ -15,9 +15,12 @@ export default function MerchantProfilePage() {
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [docUrl, setDocUrl] = useState("");
+  const [verificationRequests, setVerificationRequests] = useState<any[]>([]);
+  const [verificationMessage, setVerificationMessage] = useState("");
 
   useEffect(() => {
-    trpcCall("merchant.dashboard")
+    trpcCall<any>("merchant.dashboard")
       .then((data) => {
         setProfile(data.profile);
         setForm({
@@ -30,6 +33,7 @@ export default function MerchantProfilePage() {
         });
       })
       .catch(() => {});
+    trpcCall<any[]>("verification.mine").then(setVerificationRequests).catch(() => {});
   }, [user]);
 
   const save = async () => {
@@ -42,6 +46,13 @@ export default function MerchantProfilePage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const submitVerification = async () => {
+    await trpcCall("verification.submit", { documentUrl: docUrl, documentType: "business_registration" }, "mutation");
+    setDocUrl("");
+    setVerificationMessage("Business verification submitted.");
+    trpcCall<any[]>("verification.mine").then(setVerificationRequests).catch(() => {});
   };
 
   return (
@@ -107,6 +118,17 @@ export default function MerchantProfilePage() {
         >
           {saving ? "Saving..." : saved ? "Saved ✓" : "Save profile"}
         </button>
+      </div>
+
+      <div className="bg-white rounded-2xl p-6 shadow-sm border space-y-3">
+        <h2 className="font-black text-lg">Identity verification</h2>
+        <p className="text-sm text-gray-500">Submit a national ID or business registration link. Admin approval activates your verified badge.</p>
+        {verificationMessage && <p className="text-sm text-emerald-600 font-semibold">{verificationMessage}</p>}
+        <div className="flex gap-2">
+          <input value={docUrl} onChange={(e) => setDocUrl(e.target.value)} placeholder="https://..." className="flex-1 border rounded-xl px-3 py-2 text-sm" />
+          <button onClick={submitVerification} disabled={!docUrl} className="bg-hafi-purple text-white rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-50">Submit</button>
+        </div>
+        {verificationRequests[0] && <p className="text-xs capitalize">Latest status: <strong>{verificationRequests[0].status}</strong></p>}
       </div>
 
       <button

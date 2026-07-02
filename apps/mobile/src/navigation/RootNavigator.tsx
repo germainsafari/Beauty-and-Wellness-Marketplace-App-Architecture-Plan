@@ -5,6 +5,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../context/AuthContext";
+import { useT } from "@hafi/i18n";
 import { colors } from "../theme";
 import type { RootStackParamList } from "./types";
 
@@ -14,6 +15,7 @@ import MarketplaceScreen from "../screens/MarketplaceScreen";
 import BookingsScreen from "../screens/BookingsScreen";
 import AIChatScreen from "../screens/AIChatScreen";
 import ProfileScreen from "../screens/ProfileScreen";
+import DiscoverScreen from "../screens/DiscoverScreen";
 import ItemDetailScreen from "../screens/ItemDetailScreen";
 import CreateListingScreen from "../screens/CreateListingScreen";
 import MerchantDashboardScreen from "../screens/merchant/MerchantDashboardScreen";
@@ -25,6 +27,7 @@ const ClientTab = createBottomTabNavigator();
 const MerchantTab = createBottomTabNavigator();
 
 function ClientTabs() {
+  const t = useT();
   return (
     <ClientTab.Navigator screenOptions={({ route }) => ({
       headerShown: false,
@@ -37,11 +40,11 @@ function ClientTabs() {
         return <Ionicons name={icons[route.name]} size={size} color={color} />;
       },
     })}>
-      <ClientTab.Screen name="Home" component={HomeScreen} />
-      <ClientTab.Screen name="Marketplace" component={MarketplaceScreen} options={{ tabBarLabel: "Market" }} />
-      <ClientTab.Screen name="Bookings" component={BookingsScreen} />
-      <ClientTab.Screen name="AI" component={AIChatScreen} options={{ tabBarLabel: "Hafi AI" }} />
-      <ClientTab.Screen name="Profile" component={ProfileScreen} />
+      <ClientTab.Screen name="Home" component={HomeScreen} options={{ tabBarLabel: t("nav.home") }} />
+      <ClientTab.Screen name="Marketplace" component={MarketplaceScreen} options={{ tabBarLabel: t("nav.marketplace") }} />
+      <ClientTab.Screen name="Bookings" component={BookingsScreen} options={{ tabBarLabel: t("nav.bookings") }} />
+      <ClientTab.Screen name="AI" component={AIChatScreen} options={{ tabBarLabel: t("nav.ai") }} />
+      <ClientTab.Screen name="Profile" component={ProfileScreen} options={{ tabBarLabel: t("nav.profile") }} />
     </ClientTab.Navigator>
   );
 }
@@ -92,8 +95,9 @@ export default function RootNavigator() {
         ) : (
           <>
             <Stack.Screen name="Main" component={ClientTabs} />
+            <Stack.Screen name="Discover" component={DiscoverScreen} options={{ headerShown: true, headerTintColor: colors.purple }} />
             <Stack.Screen name="ItemDetail" component={ItemDetailScreen} options={{ headerShown: true, headerTitle: "", headerTintColor: colors.purple }} />
-            <Stack.Screen name="CreateListing" component={CreateListingScreen} options={{ headerShown: true, headerTitle: "Sell Item", headerTintColor: colors.purple }} />
+            <Stack.Screen name="CreateListing" component={CreateListingScreen} options={{ headerShown: true, headerTintColor: colors.purple }} />
           </>
         )}
       </Stack.Navigator>

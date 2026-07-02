@@ -3,10 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
-    "api": "npm run dev --workspace=@hafi/api",
+    "api": "node scripts/free-port.mjs 3001 && npm run dev --workspace=@hafi/api",
     "api:start": "npm run start --workspace=@hafi/api",
     "web": "npm run dev --workspace=@hafi/web",
     "web:build": "npm run build --workspace=@hafi/web",
@@ -16,7 +17,10 @@
     "db:push": "npm run db:push --workspace=@hafi/api",
     "db:seed": "npm run db:seed --workspace=@hafi/api",
     "db:seed:demo": "npm run db:seed:demo --workspace=@hafi/api",
-    "dev": "concurrently -n api,web \"npm run api\" \"npm run web\"",
+    "db:seed:extra": "npm run db:seed:extra --workspace=@hafi/api",
+    "db:ensure-local-demo": "node scripts/ensure-local-services-demo.mjs",
+    "verify:prod": "node scripts/verify-production.mjs",
+    "dev": "node scripts/free-port.mjs 3001 && concurrently -n api,web \"npm run api\" \"npm run web\"",
     "dev:all": "concurrently -n api,web,mobile \"npm run api\" \"npm run web\" \"npm run mobile\""
   },
   "dependencies": {

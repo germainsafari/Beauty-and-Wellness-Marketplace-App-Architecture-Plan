@@ -10,10 +10,12 @@
     "start": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
+    "@hafi/i18n": "*",
     "lucide-react": "^0.469.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "react-router-dom": "^7.1.1"
+    "react-router-dom": "^7.1.1",
+    "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
     "@types/react": "~19.1.10",

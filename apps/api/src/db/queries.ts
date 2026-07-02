@@ -1,19 +1,27 @@
-import { and, desc, eq, gte, ilike, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, lt, or, sql } from "drizzle-orm";
 import { db } from "./index.js";
 import {
+  adminActions,
   aiMessages,
   aiSessions,
   bookings,
+  boosts,
+  bundleRules,
   conversations,
   favorites,
   listings,
+  loyaltyLedger,
   messages,
   notifications,
+  orders,
   offers,
+  payments,
   providerProfiles,
+  pushTokens,
   serviceCategories,
   services,
   users,
+  verificationRequests,
 } from "./schema.js";
 import type { User } from "./schema.js";
 
@@ -172,6 +180,8 @@ export async function getListings(opts: {
     conditions.push(eq(listings.condition, opts.condition as "new" | "like_new" | "good" | "fair"));
   }
 
+  await expireOldBoosts();
+
   const rows = await db
     .select({
       listing: listings,
@@ -194,6 +204,13 @@ export async function getListings(opts: {
       location: seller.location,
     },
   }));
+}
+
+export async function expireOldBoosts() {
+  await db
+    .update(listings)
+    .set({ isBumped: false })
+    .where(and(eq(listings.isBumped, true), lt(listings.bumpedUntil, new Date())));
 }
 
 export async function getListingById(id: number) {
@@ -335,6 +352,12 @@ export async function updateBooking(
     if (!row) throw new Error("Booking not found");
   }
   await db.update(bookings).set(data).where(eq(bookings.id, id));
+  if (data.status === "completed") {
+    const [booking] = await db.select().from(bookings).where(eq(bookings.id, id)).limit(1);
+    if (booking) {
+      await awardLoyaltyPoints(booking.customerId, Math.max(25, Math.floor(Number(booking.totalAmount) / 1000)), "booking_completed", "booking", booking.id);
+    }
+  }
 }
 
 export async function getProviderBookingsWithCustomer(providerId: number) {
@@ -462,6 +485,28 @@ export async function createNotification(data: {
   actionUrl?: string;
 }) {
   await db.insert(notifications).values(data);
+}
+
+export async function createPushToken(data: {
+  userId: number;
+  platform: string;
+  token: string;
+}) {
+  const [existing] = await db
+    .select()
+    .from(pushTokens)
+    .where(and(eq(pushTokens.userId, data.userId), eq(pushTokens.token, data.token)))
+    .limit(1);
+  if (existing) {
+    const [updated] = await db
+      .update(pushTokens)
+      .set({ platform: data.platform, enabled: true, updatedAt: new Date() })
+      .where(eq(pushTokens.id, existing.id))
+      .returning();
+    return updated;
+  }
+  const [created] = await db.insert(pushTokens).values(data).returning();
+  return created;
 }
 
 export async function createOffer(data: {
@@ -607,4 +652,398 @@ export async function addAiMessage(sessionId: number, role: "user" | "assistant"
 export async function getWalletBalance(userId: number) {
   const user = await getUserById(userId);
   return { balance: user?.walletBalance ?? "0.00", loyaltyPoints: user?.loyaltyPoints ?? 0 };
+}
+
+export async function awardLoyaltyPoints(
+  userId: number,
+  points: number,
+  reason: string,
+  referenceType?: string,
+  referenceId?: number
+) {
+  if (points === 0) return null;
+  const user = await getUserById(userId);
+  if (!user) return null;
+  const next = (user.loyaltyPoints ?? 0) + points;
+  await db.update(users).set({ loyaltyPoints: next, updatedAt: new Date() }).where(eq(users.id, userId));
+  const [entry] = await db
+    .insert(loyaltyLedger)
+    .values({ userId, points, reason, referenceType, referenceId })
+    .returning();
+  return entry;
+}
+
+export async function getUserPayments(userId: number) {
+  return db
+    .select()
+    .from(payments)
+    .where(eq(payments.userId, userId))
+    .orderBy(desc(payments.createdAt))
+    .limit(30);
+}
+
+export async function getLoyaltyLedger(userId: number) {
+  return db
+    .select()
+    .from(loyaltyLedger)
+    .where(eq(loyaltyLedger.userId, userId))
+    .orderBy(desc(loyaltyLedger.createdAt))
+    .limit(50);
+}
+
+export async function createVerificationRequest(data: {
+  userId: number;
+  documentType: string;
+  documentUrl: string;
+}) {
+  const [request] = await db
+    .insert(verificationRequests)
+    .values(data)
+    .returning();
+  await createNotification({
+    userId: data.userId,
+    type: "verification_submitted",
+    title: "Verification submitted",
+    body: "Your ID verification is waiting for admin review.",
+  });
+  return request;
+}
+
+export async function getMyVerificationRequests(userId: number) {
+  return db
+    .select()
+    .from(verificationRequests)
+    .where(eq(verificationRequests.userId, userId))
+    .orderBy(desc(verificationRequests.createdAt));
+}
+
+export async function getPaymentById(id: number) {
+  const [payment] = await db.select().from(payments).where(eq(payments.id, id)).limit(1);
+  return payment ?? null;
+}
+
+export async function createPaymentIntent(data: {
+  userId: number;
+  provider: "mtn_momo" | "airtel_money" | "stripe" | "demo";
+  purpose: "booking" | "order" | "boost";
+  referenceId?: number;
+  amount: string;
+  phone?: string;
+  metadata?: Record<string, unknown>;
+}) {
+  const externalReference = `hafi_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const status = data.provider === "demo" ? "succeeded" : "processing";
+  const [payment] = await db
+    .insert(payments)
+    .values({
+      ...data,
+      status,
+      externalReference,
+      metadata: data.metadata,
+    })
+    .returning();
+  return payment;
+}
+
+export async function updatePaymentStatus(
+  paymentId: number,
+  status: "pending" | "processing" | "succeeded" | "failed" | "refunded"
+) {
+  const [payment] = await db
+    .update(payments)
+    .set({ status, updatedAt: new Date() })
+    .where(eq(payments.id, paymentId))
+    .returning();
+  if (!payment) return null;
+  if (status === "succeeded") {
+    if (payment.purpose === "order" && payment.referenceId) {
+      await markOrderPaid(payment.referenceId, payment.id);
+    }
+    if (payment.purpose === "booking" && payment.referenceId) {
+      const [booking] = await db.select().from(bookings).where(eq(bookings.id, payment.referenceId)).limit(1);
+      if (booking) {
+        await createNotification({
+          userId: booking.customerId,
+          type: "payment_succeeded",
+          title: "Payment received",
+          body: `Your booking payment of RWF ${Number(payment.amount).toLocaleString()} succeeded.`,
+          actionUrl: "/client/bookings",
+        });
+      }
+    }
+  }
+  return payment;
+}
+
+export async function buyListingNow(data: {
+  listingId: number;
+  buyerId: number;
+  provider: "mtn_momo" | "airtel_money" | "stripe" | "demo";
+  phone?: string;
+}) {
+  const listing = await getListingById(data.listingId);
+  if (!listing) throw new Error("Listing not found");
+  if (listing.seller.id === data.buyerId) throw new Error("Cannot buy your own listing");
+  if (listing.status !== "active") throw new Error("Listing is not available");
+
+  const subtotal = Number(listing.price);
+  const protectionFee = Math.round(subtotal * 0.05);
+  const totalAmount = subtotal + protectionFee;
+
+  const [order] = await db
+    .insert(orders)
+    .values({
+      listingId: data.listingId,
+      buyerId: data.buyerId,
+      sellerId: listing.seller.id,
+      subtotal: subtotal.toFixed(2),
+      protectionFee: protectionFee.toFixed(2),
+      totalAmount: totalAmount.toFixed(2),
+      pickupLocation: listing.location ?? listing.seller.location ?? "Kigali",
+    })
+    .returning();
+
+  const payment = await createPaymentIntent({
+    userId: data.buyerId,
+    provider: data.provider,
+    purpose: "order",
+    referenceId: order.id,
+    amount: totalAmount.toFixed(2),
+    phone: data.phone,
+    metadata: { listingId: data.listingId },
+  });
+
+  await db.update(orders).set({ paymentId: payment.id }).where(eq(orders.id, order.id));
+  if (payment.status === "succeeded") await markOrderPaid(order.id, payment.id);
+
+  await createNotification({
+    userId: listing.seller.id,
+    type: "order_created",
+    title: "New order",
+    body: `${listing.title} has a new buyer.`,
+    actionUrl: "/merchant/listings",
+  });
+
+  return { order: { ...order, paymentId: payment.id }, payment };
+}
+
+export async function markOrderPaid(orderId: number, paymentId: number) {
+  const [order] = await db
+    .update(orders)
+    .set({ status: "paid", paymentId, updatedAt: new Date() })
+    .where(eq(orders.id, orderId))
+    .returning();
+  if (!order) return null;
+  await db.update(listings).set({ status: "reserved" }).where(eq(listings.id, order.listingId));
+  await awardLoyaltyPoints(order.buyerId, Math.max(20, Math.floor(Number(order.totalAmount) / 1000)), "order_paid", "order", order.id);
+  return order;
+}
+
+export async function getMyOrders(userId: number) {
+  return db
+    .select({ order: orders, listing: listings, payment: payments })
+    .from(orders)
+    .innerJoin(listings, eq(orders.listingId, listings.id))
+    .leftJoin(payments, eq(orders.paymentId, payments.id))
+    .where(or(eq(orders.buyerId, userId), eq(orders.sellerId, userId)))
+    .orderBy(desc(orders.createdAt));
+}
+
+export async function boostListing(data: {
+  listingId: number;
+  sellerId: number;
+  provider: "mtn_momo" | "airtel_money" | "stripe" | "demo";
+  phone?: string;
+  days?: number;
+}) {
+  const [listing] = await db
+    .select()
+    .from(listings)
+    .where(and(eq(listings.id, data.listingId), eq(listings.sellerId, data.sellerId)))
+    .limit(1);
+  if (!listing) throw new Error("Listing not found");
+
+  const days = data.days ?? 7;
+  const amount = (days * 1000).toFixed(2);
+  const payment = await createPaymentIntent({
+    userId: data.sellerId,
+    provider: data.provider,
+    purpose: "boost",
+    referenceId: data.listingId,
+    amount,
+    phone: data.phone,
+    metadata: { days },
+  });
+  const expiresAt = new Date(Date.now() + days * 86400000);
+  const [boost] = await db
+    .insert(boosts)
+    .values({ listingId: data.listingId, sellerId: data.sellerId, paymentId: payment.id, expiresAt })
+    .returning();
+  await db
+    .update(listings)
+    .set({ isBumped: true, bumpedUntil: expiresAt, updatedAt: new Date() })
+    .where(eq(listings.id, data.listingId));
+  return { boost, payment };
+}
+
+export async function upsertBundleRule(data: {
+  sellerId: number;
+  minItems: number;
+  discountPercent: number;
+}) {
+  const [existing] = await db
+    .select()
+    .from(bundleRules)
+    .where(eq(bundleRules.sellerId, data.sellerId))
+    .limit(1);
+  if (existing) {
+    const [updated] = await db
+      .update(bundleRules)
+      .set({ minItems: data.minItems, discountPercent: data.discountPercent, isActive: true })
+      .where(eq(bundleRules.id, existing.id))
+      .returning();
+    return updated;
+  }
+  const [created] = await db.insert(bundleRules).values(data).returning();
+  return created;
+}
+
+export async function quoteBundle(userId: number, listingIds: number[]) {
+  const rows = await db
+    .select({ listing: listings, seller: users })
+    .from(listings)
+    .innerJoin(users, eq(listings.sellerId, users.id))
+    .where(listingIds.length > 0 ? inArray(listings.id, listingIds) : sql`false`);
+  if (rows.length === 0) return { items: [], subtotal: 0, discount: 0, total: 0, discountPercent: 0 };
+  const sellerId = rows[0].listing.sellerId;
+  if (!rows.every((r) => r.listing.sellerId === sellerId)) {
+    throw new Error("Bundles must come from one seller");
+  }
+  if (sellerId === userId) throw new Error("Cannot bundle your own listings");
+  const [rule] = await db
+    .select()
+    .from(bundleRules)
+    .where(and(eq(bundleRules.sellerId, sellerId), eq(bundleRules.isActive, true)))
+    .limit(1);
+  const subtotal = rows.reduce((sum, r) => sum + Number(r.listing.price), 0);
+  const discountPercent = rule && rows.length >= rule.minItems ? rule.discountPercent : 0;
+  const discount = Math.round((subtotal * discountPercent) / 100);
+  return {
+    items: rows.map((r) => r.listing),
+    subtotal,
+    discount,
+    total: subtotal - discount,
+    discountPercent,
+  };
+}
+
+export async function getAdminSummary() {
+  const [userCount] = await db.select({ count: sql<number>`count(*)::int` }).from(users);
+  const [listingCount] = await db.select({ count: sql<number>`count(*)::int` }).from(listings);
+  const [bookingCount] = await db.select({ count: sql<number>`count(*)::int` }).from(bookings);
+  const [paymentTotal] = await db
+    .select({ total: sql<string>`coalesce(sum(${payments.amount}), 0)` })
+    .from(payments)
+    .where(eq(payments.status, "succeeded"));
+  const pendingVerification = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(verificationRequests)
+    .where(eq(verificationRequests.status, "pending"));
+  return {
+    users: userCount?.count ?? 0,
+    listings: listingCount?.count ?? 0,
+    bookings: bookingCount?.count ?? 0,
+    revenue: paymentTotal?.total ?? "0",
+    pendingVerification: pendingVerification[0]?.count ?? 0,
+  };
+}
+
+export async function getAdminUsers() {
+  return db.select().from(users).orderBy(desc(users.createdAt)).limit(100);
+}
+
+export async function getAdminVerificationQueue() {
+  return db
+    .select({ request: verificationRequests, user: users })
+    .from(verificationRequests)
+    .innerJoin(users, eq(verificationRequests.userId, users.id))
+    .orderBy(desc(verificationRequests.createdAt));
+}
+
+export async function reviewVerificationRequest(data: {
+  adminId: number;
+  requestId: number;
+  status: "approved" | "rejected";
+  rejectionReason?: string;
+}) {
+  const [request] = await db
+    .update(verificationRequests)
+    .set({
+      status: data.status,
+      rejectionReason: data.rejectionReason,
+      reviewedById: data.adminId,
+      reviewedAt: new Date(),
+    })
+    .where(eq(verificationRequests.id, data.requestId))
+    .returning();
+  if (!request) throw new Error("Verification request not found");
+  if (data.status === "approved") {
+    await db.update(users).set({ isVerified: true, updatedAt: new Date() }).where(eq(users.id, request.userId));
+  }
+  await db.insert(adminActions).values({
+    adminId: data.adminId,
+    action: `verification_${data.status}`,
+    targetType: "verification_request",
+    targetId: request.id,
+    metadata: { userId: request.userId, rejectionReason: data.rejectionReason },
+  });
+  await createNotification({
+    userId: request.userId,
+    type: `verification_${data.status}`,
+    title: data.status === "approved" ? "Verification approved" : "Verification rejected",
+    body: data.status === "approved" ? "Your Hafi verified badge is now active." : data.rejectionReason ?? "Please submit a clearer document.",
+  });
+  return request;
+}
+
+export async function getServiceCategories() {
+  return db.select().from(serviceCategories).orderBy(serviceCategories.name);
+}
+
+export async function getServicesByProviderId(providerId: number) {
+  return db
+    .select({
+      service: services,
+      category: serviceCategories,
+    })
+    .from(services)
+    .leftJoin(serviceCategories, eq(services.categoryId, serviceCategories.id))
+    .where(and(eq(services.providerId, providerId), eq(services.isActive, true)))
+    .orderBy(services.name);
+}
+
+export async function getNearbyProviders(opts: { latitude?: number; longitude?: number }) {
+  const rows = await getAllProviders();
+  return rows
+    .map((row) => {
+      const lat = Number(row.profile.latitude ?? -1.9441);
+      const lng = Number(row.profile.longitude ?? 30.0619);
+      const distanceKm =
+        opts.latitude !== undefined && opts.longitude !== undefined
+          ? haversineKm(opts.latitude, opts.longitude, lat, lng)
+          : null;
+      return { ...row, distanceKm };
+    })
+    .sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999));
+}
+
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const earthKm = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return Math.round(earthKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10;
 }

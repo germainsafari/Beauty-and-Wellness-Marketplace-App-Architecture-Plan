@@ -2,38 +2,104 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../context/AuthContext";
 import { trpcCall } from "../lib/api";
+import { DEMO_DOC_URLS } from "../lib/onboarding";
+import LanguageSwitcher from "../components/LanguageSwitcher";
+import { useT } from "@hafi/i18n";
 import { colors, radius, spacing } from "../theme";
+
+type Section = "verification" | "loyalty" | "payments" | "notifications" | "orders" | "help";
+
+const PAYMENTS = [
+  { id: "demo", label: "Demo instant pay" },
+  { id: "mtn_momo", label: "MTN MoMo" },
+  { id: "airtel_money", label: "Airtel Money" },
+  { id: "stripe", label: "Card (Stripe)" },
+];
 
 export default function ProfileScreen() {
   const { user, logout, activeRole, switchRole } = useAuth();
+  const t = useT();
+  const [open, setOpen] = useState<Section | null>("loyalty");
   const [wallet, setWallet] = useState({ balance: "0", loyaltyPoints: 0 });
-  const [notifCount, setNotifCount] = useState(0);
+  const [ledger, setLedger] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [orders, setOrders] = useState<any[]>([]);
+  const [payments, setPayments] = useState<any[]>([]);
+  const [helpTopics, setHelpTopics] = useState<any[]>([]);
+  const [verification, setVerification] = useState<any[]>([]);
+  const [docUrl, setDocUrl] = useState("");
+  const [defaultPayment, setDefaultPayment] = useState("demo");
   const [switching, setSwitching] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [bal, notifs] = await Promise.all([
+      const [bal, led, notifs, ords, pays, help, ver, summary] = await Promise.all([
         trpcCall<{ balance: string; loyaltyPoints: number }>("wallet.balance"),
-        trpcCall<{ isRead: boolean }[]>("notifications.mine"),
+        trpcCall<any[]>("profile.loyaltyActivity"),
+        trpcCall<any[]>("notifications.mine"),
+        trpcCall<any[]>("profile.purchaseHistory"),
+        trpcCall<any[]>("profile.paymentHistory"),
+        trpcCall<any[]>("help.topics"),
+        trpcCall<any[]>("verification.mine"),
+        trpcCall<{ defaultPaymentProvider: string }>("profile.summary"),
       ]);
       setWallet(bal);
-      setNotifCount(notifs.filter((n) => !n.isRead).length);
+      setLedger(led);
+      setNotifications(notifs);
+      setOrders(ords);
+      setPayments(pays);
+      setHelpTopics(help);
+      setVerification(ver);
+      setDefaultPayment(summary.defaultPaymentProvider);
     } catch {
-      /* empty */
+      /* offline */
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const formatPrice = (p: string) => `RWF ${Number(p).toLocaleString()}`;
+  const toggle = (s: Section) => setOpen((c) => (c === s ? null : s));
+
+  const submitVerification = async () => {
+    if (!docUrl.startsWith("https://")) {
+      Alert.alert("Invalid URL", "Use a secure HTTPS document URL for the MVP demo.");
+      return;
+    }
+    try {
+      await trpcCall("verification.submit", { documentUrl: docUrl, documentType: "national_id" }, "mutation");
+      setDocUrl("");
+      Alert.alert("Submitted", "Admin will review within 24–48 hours.");
+      load();
+    } catch (e) {
+      Alert.alert("Error", e instanceof Error ? e.message : "Could not submit");
+    }
+  };
+
+  const savePayment = async (provider: string) => {
+    await trpcCall("profile.setDefaultPayment", { provider }, "mutation");
+    setDefaultPayment(provider);
+    Alert.alert("Saved", `Default payment: ${provider.replace("_", " ")}`);
+  };
+
+  const markAllRead = async () => {
+    await trpcCall("notifications.markAllRead", {}, "mutation");
+    load();
+  };
 
   const handleLogout = () => {
     Alert.alert("Log out", "Are you sure?", [
@@ -48,16 +114,13 @@ export default function ProfileScreen() {
     try {
       await switchRole(nextRole);
     } catch (e) {
-      Alert.alert(
-        "Could not switch mode",
-        e instanceof Error ? e.message : "Check that the API is running and reachable from your phone."
-      );
+      Alert.alert("Error", e instanceof Error ? e.message : "Could not switch mode");
     } finally {
       setSwitching(false);
     }
   };
 
-  const formatPrice = (p: string) => `RWF ${Number(p).toLocaleString()}`;
+  const unread = notifications.filter((n) => !n.isRead).length;
 
   return (
     <ScrollView style={styles.container}>
@@ -75,6 +138,10 @@ export default function ProfileScreen() {
         )}
       </LinearGradient>
 
+      <View style={styles.langWrap}>
+        <LanguageSwitcher />
+      </View>
+
       <View style={styles.statsRow}>
         <View style={styles.stat}>
           <Text style={styles.statVal}>{wallet.loyaltyPoints}</Text>
@@ -87,52 +154,132 @@ export default function ProfileScreen() {
         </View>
         <View style={styles.statDivider} />
         <View style={styles.stat}>
-          <Text style={styles.statVal}>{notifCount}</Text>
+          <Text style={styles.statVal}>{unread}</Text>
           <Text style={styles.statLabel}>Alerts</Text>
         </View>
       </View>
 
-      <View style={styles.menu}>
-        {[
-          { icon: "bag-handle-outline" as const, label: "My Listings", desc: "Manage your marketplace items" },
-          { icon: "heart-outline" as const, label: "Favorites", desc: "Saved items" },
-          { icon: "card-outline" as const, label: "Payment Methods", desc: "MTN MoMo, Cards" },
-          { icon: "notifications-outline" as const, label: "Notifications", desc: "Booking & offer alerts" },
-          { icon: "help-circle-outline" as const, label: "Help & Support", desc: "Get help from Hafi team" },
-        ].map((item) => (
-          <Pressable key={item.label} style={styles.menuItem}>
-            <View style={styles.menuIcon}>
-              <Ionicons name={item.icon} size={22} color={colors.purple} />
+      <Section title="Identity verification" icon="shield-checkmark-outline" open={open === "verification"} onPress={() => toggle("verification")}>
+        <Text style={styles.hint}>Secure HTTPS document URL for MVP demo.</Text>
+        <View style={styles.chipRow}>
+          {DEMO_DOC_URLS.map((d) => (
+            <Pressable key={d.url} style={styles.chip} onPress={() => setDocUrl(d.url)}>
+              <Text style={styles.chipText}>{d.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <TextInput style={styles.input} placeholder="https://..." value={docUrl} onChangeText={setDocUrl} autoCapitalize="none" />
+        <Pressable style={[styles.smallBtn, !docUrl.startsWith("https://") && styles.smallBtnDisabled]} onPress={submitVerification}>
+          <Text style={styles.smallBtnText}>Submit</Text>
+        </Pressable>
+        {verification[0] && <Text style={styles.meta}>Status: {verification[0].status}</Text>}
+      </Section>
+
+      <Section title="Recent loyalty activity" icon="gift-outline" badge={`${wallet.loyaltyPoints} pts`} open={open === "loyalty"} onPress={() => toggle("loyalty")}>
+        {ledger.length === 0 ? (
+          <Text style={styles.empty}>Earn points when you shop, book, or get verified.</Text>
+        ) : (
+          ledger.slice(0, 8).map((e) => (
+            <View key={e.id} style={styles.row}>
+              <Text style={styles.rowLabel}>{e.reason.replaceAll("_", " ")}</Text>
+              <Text style={styles.rowVal}>+{e.points}</Text>
             </View>
-            <View style={styles.menuInfo}>
-              <Text style={styles.menuLabel}>{item.label}</Text>
-              <Text style={styles.menuDesc}>{item.desc}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.gray400} />
+          ))
+        )}
+      </Section>
+
+      <Section title="Payment methods" icon="card-outline" open={open === "payments"} onPress={() => toggle("payments")}>
+        {PAYMENTS.map((p) => (
+          <Pressable key={p.id} style={[styles.payOption, defaultPayment === p.id && styles.payOptionActive]} onPress={() => savePayment(p.id)}>
+            <Text style={styles.payLabel}>{p.label}</Text>
+            {defaultPayment === p.id && <Ionicons name="checkmark-circle" size={20} color={colors.purple} />}
           </Pressable>
         ))}
-      </View>
+        {payments.slice(0, 3).map((p) => (
+          <Text key={p.id} style={styles.meta}>{p.purpose} · {formatPrice(p.amount)} · {p.status}</Text>
+        ))}
+      </Section>
 
-      <Pressable
-        style={[styles.switchBtn, switching && styles.switchBtnDisabled]}
-        onPress={handleSwitchRole}
-        disabled={switching}
-      >
-        {switching ? (
-          <ActivityIndicator color={colors.white} />
+      <Section title="Notifications" icon="notifications-outline" badge={unread ? String(unread) : undefined} open={open === "notifications"} onPress={() => toggle("notifications")}>
+        {notifications.length === 0 ? (
+          <Text style={styles.empty}>No notifications yet.</Text>
         ) : (
-          <Text style={styles.switchText}>
-            Switch to {activeRole === "provider" ? "Client" : "Merchant"} mode
-          </Text>
+          <>
+            <Pressable onPress={markAllRead}><Text style={styles.link}>Mark all as read</Text></Pressable>
+            {notifications.slice(0, 6).map((n) => (
+              <View key={n.id} style={[styles.notif, !n.isRead && styles.notifUnread]}>
+                <Text style={styles.notifTitle}>{n.title}</Text>
+                {n.body ? <Text style={styles.meta}>{n.body}</Text> : null}
+              </View>
+            ))}
+          </>
+        )}
+      </Section>
+
+      <Section title="Purchase history" icon="bag-handle-outline" badge={orders.length ? String(orders.length) : undefined} open={open === "orders"} onPress={() => toggle("orders")}>
+        {orders.length === 0 ? (
+          <Text style={styles.empty}>No purchases yet.</Text>
+        ) : (
+          orders.slice(0, 8).map(({ order, listing }: any) => (
+            <View key={order.id} style={styles.row}>
+              <Text style={styles.rowLabel} numberOfLines={1}>{listing.title}</Text>
+              <Text style={styles.rowVal}>{formatPrice(order.totalAmount)}</Text>
+            </View>
+          ))
+        )}
+      </Section>
+
+      <Section title="Help & support" icon="help-circle-outline" open={open === "help"} onPress={() => toggle("help")}>
+        {helpTopics.map((t: any) => (
+          <View key={t.id} style={styles.helpItem}>
+            <Text style={styles.helpTitle}>{t.title}</Text>
+            <Text style={styles.meta}>{t.body}</Text>
+          </View>
+        ))}
+        <Pressable onPress={() => Linking.openURL("mailto:support@hafi.rw")}>
+          <Text style={styles.link}>Email support@hafi.rw</Text>
+        </Pressable>
+      </Section>
+
+      <Pressable style={[styles.switchBtn, switching && { opacity: 0.7 }]} onPress={handleSwitchRole} disabled={switching}>
+        {switching ? <ActivityIndicator color={colors.white} /> : (
+          <Text style={styles.switchText}>Switch to {activeRole === "provider" ? "Client" : "Merchant"} mode</Text>
         )}
       </Pressable>
-
       <Pressable style={styles.logoutBtn} onPress={handleLogout}>
         <Ionicons name="log-out-outline" size={20} color={colors.rose} />
         <Text style={styles.logoutText}>Log Out</Text>
       </Pressable>
       <Text style={styles.version}>Hafi v1.0.0 · Made with 💜 in Rwanda</Text>
     </ScrollView>
+  );
+}
+
+function Section({
+  title,
+  icon,
+  badge,
+  open,
+  onPress,
+  children,
+}: {
+  title: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  badge?: string;
+  open: boolean;
+  onPress: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.section}>
+      <Pressable style={styles.sectionHead} onPress={onPress}>
+        <Ionicons name={icon} size={20} color={colors.purple} />
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {badge ? <Text style={styles.badge}>{badge}</Text> : null}
+        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={18} color={colors.gray400} />
+      </Pressable>
+      {open ? <View style={styles.sectionBody}>{children}</View> : null}
+    </View>
   );
 }
 
@@ -145,19 +292,40 @@ const styles = StyleSheet.create({
   phone: { color: "rgba(255,255,255,0.7)", marginTop: 4 },
   verifiedBadge: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(255,255,255,0.2)", paddingHorizontal: 12, paddingVertical: 4, borderRadius: radius.full, marginTop: spacing.sm },
   verifiedText: { color: colors.white, fontSize: 12, fontWeight: "600" },
-  statsRow: { flexDirection: "row", backgroundColor: colors.white, marginHorizontal: spacing.md, marginTop: -spacing.lg, borderRadius: radius.xl, padding: spacing.md },
+  statsRow: { flexDirection: "row", backgroundColor: colors.white, marginHorizontal: spacing.md, marginTop: spacing.sm, borderRadius: radius.xl, padding: spacing.md },
+  langWrap: { marginHorizontal: spacing.md, marginTop: spacing.sm },
   stat: { flex: 1, alignItems: "center" },
-  statVal: { fontSize: 16, fontWeight: "900", color: colors.purpleDark },
+  statVal: { fontSize: 14, fontWeight: "900", color: colors.purpleDark },
   statLabel: { fontSize: 11, color: colors.gray400, marginTop: 2 },
   statDivider: { width: 1, backgroundColor: "#EDE9FE" },
-  menu: { margin: spacing.md, backgroundColor: colors.white, borderRadius: radius.xl, overflow: "hidden" },
-  menuItem: { flexDirection: "row", alignItems: "center", padding: spacing.md, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
-  menuIcon: { width: 40, height: 40, borderRadius: radius.md, backgroundColor: colors.purpleBg, alignItems: "center", justifyContent: "center" },
-  menuInfo: { flex: 1, marginLeft: spacing.md },
-  menuLabel: { fontWeight: "700", color: colors.purpleDark },
-  menuDesc: { fontSize: 12, color: colors.gray400, marginTop: 2 },
-  switchBtn: { marginHorizontal: spacing.md, marginBottom: spacing.sm, padding: spacing.md, backgroundColor: colors.purple, borderRadius: radius.xl, alignItems: "center", minHeight: 52, justifyContent: "center" },
-  switchBtnDisabled: { opacity: 0.7 },
+  section: { marginHorizontal: spacing.md, marginTop: spacing.sm, backgroundColor: colors.white, borderRadius: radius.xl, overflow: "hidden" },
+  sectionHead: { flexDirection: "row", alignItems: "center", padding: spacing.md, gap: spacing.sm },
+  sectionTitle: { flex: 1, fontWeight: "800", color: colors.purpleDark },
+  badge: { fontSize: 10, fontWeight: "800", backgroundColor: colors.purpleBg, color: colors.purple, paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.full },
+  sectionBody: { paddingHorizontal: spacing.md, paddingBottom: spacing.md, borderTopWidth: 1, borderTopColor: "#F3F4F6" },
+  hint: { fontSize: 12, color: colors.gray400, marginBottom: spacing.sm },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.sm },
+  chip: { backgroundColor: colors.purpleBg, paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.full },
+  chipText: { fontSize: 11, fontWeight: "700", color: colors.purple },
+  input: { backgroundColor: colors.purpleBg, borderRadius: radius.lg, padding: spacing.sm, marginBottom: spacing.sm, fontSize: 14 },
+  smallBtn: { backgroundColor: colors.purple, borderRadius: radius.lg, paddingVertical: 10, alignItems: "center" },
+  smallBtnDisabled: { opacity: 0.5 },
+  smallBtnText: { color: colors.white, fontWeight: "800" },
+  empty: { fontSize: 13, color: colors.gray400 },
+  row: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#F9FAFB" },
+  rowLabel: { flex: 1, fontSize: 13, color: colors.gray800, textTransform: "capitalize" },
+  rowVal: { fontWeight: "800", color: colors.purple },
+  payOption: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: spacing.sm, borderRadius: radius.lg, borderWidth: 1, borderColor: "#F3F4F6", marginBottom: spacing.sm },
+  payOptionActive: { borderColor: colors.purple, backgroundColor: colors.purpleBg },
+  payLabel: { fontWeight: "700", color: colors.purpleDark },
+  meta: { fontSize: 11, color: colors.gray400, marginTop: 4 },
+  link: { fontSize: 13, fontWeight: "700", color: colors.purple, marginBottom: spacing.sm },
+  notif: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#F9FAFB" },
+  notifUnread: { backgroundColor: colors.purpleBg, marginHorizontal: -8, paddingHorizontal: 8, borderRadius: radius.md },
+  notifTitle: { fontWeight: "700", fontSize: 13, color: colors.purpleDark },
+  helpItem: { marginBottom: spacing.sm },
+  helpTitle: { fontWeight: "700", fontSize: 13, color: colors.purpleDark },
+  switchBtn: { marginHorizontal: spacing.md, marginTop: spacing.md, padding: spacing.md, backgroundColor: colors.purple, borderRadius: radius.xl, alignItems: "center", minHeight: 52, justifyContent: "center" },
   switchText: { color: colors.white, fontWeight: "700" },
   logoutBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, margin: spacing.md, padding: spacing.md, backgroundColor: colors.white, borderRadius: radius.xl },
   logoutText: { color: colors.rose, fontWeight: "700" },

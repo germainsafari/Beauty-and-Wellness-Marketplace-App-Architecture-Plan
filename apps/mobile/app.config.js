@@ -34,6 +34,9 @@ module.exports = {
     },
     extra: {
       apiUrl,
+      eas: {
+        projectId: process.env.EXPO_PROJECT_ID || "00000000-0000-0000-0000-000000000000",
+      },
     },
     sdkVersion: "54.0.0",
   },

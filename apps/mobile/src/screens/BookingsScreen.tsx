@@ -78,7 +78,7 @@ export default function BookingsScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Bookings</Text>
-        <Text style={styles.subtitle}>Salon & wellness services 💆‍♀️</Text>
+        <Text style={styles.subtitle}>Book electricians, mechanics, salons, cleaners, and more</Text>
         <View style={styles.tabs}>
           {(["book", "mine"] as const).map((t) => (
             <Pressable
@@ -137,7 +137,7 @@ export default function BookingsScreen() {
             <View style={styles.empty}>
               <Ionicons name="calendar-outline" size={48} color={colors.gray400} />
               <Text style={styles.emptyTitle}>No bookings yet</Text>
-              <Text style={styles.emptyDesc}>Discover beauty services near you</Text>
+              <Text style={styles.emptyDesc}>Discover trusted services near you</Text>
             </View>
           }
           renderItem={({ item }) => (

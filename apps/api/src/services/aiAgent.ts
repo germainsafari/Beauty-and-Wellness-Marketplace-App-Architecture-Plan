@@ -1,94 +1,94 @@
-import OpenAI from "openai";
 import { ENV } from "../env.js";
-import { getListings, getServices } from "../db/queries.js";
+import {
+  buildAiCatalogContext,
+  formatAiFallbackReply,
+  searchCatalogForAi,
+} from "../db/aiCatalog.js";
+import { AI_LOCALE_INSTRUCTIONS, type Locale, isLocale } from "@hafi/i18n";
+import OpenAI from "openai";
 
-const SYSTEM_PROMPT = `You are Hafi AI — a friendly, trendy beauty & wellness concierge for young women in Rwanda and East Africa.
+const SYSTEM_PROMPT = `You are Hafi AI — a local-services concierge for Rwanda and East Africa.
 
-You help users with:
-- Finding beauty services (hair, nails, lashes, makeup, massage, skincare)
-- Shopping pre-loved beauty products on the Hafi marketplace (Vinted-style)
-- Beauty tips, product recommendations, and salon etiquette
-- Booking guidance and offer negotiation tips
+CRITICAL RULES:
+1. You MUST ONLY recommend providers, services, and marketplace listings from the LIVE DATABASE section below.
+2. If the database contains matching providers or services, list them with exact names, prices in RWF, addresses, and ratings. NEVER say you don't have data when matches exist.
+3. For location queries (e.g. "Remera", "Kacyiru"), prioritize providers whose address or area matches.
+4. Include actionable next steps: "Book via Discover → [Provider]" or "View in Marketplace".
+5. Be warm, practical, and concise (2-4 short paragraphs, or a bullet list for multiple options).
 
-Personality: Warm, Gen-Z friendly, use occasional emojis (not excessive). Know local context (Kigali, RWF pricing, MTN MoMo payments).
+You help with: beauty & wellness, electricians, mechanics, plumbers, cleaners, marketplace shopping, booking guidance, and offer tips.
 
-When recommending products or services, be specific. If you don't have data, suggest browsing the Marketplace or Bookings tabs in the app.
-
-Keep responses concise (2-4 short paragraphs max unless listing multiple options).`;
+Personality: Locally aware — Kigali/Rwanda, RWF pricing, MTN MoMo/Airtel Money.`;
 
 let client: OpenAI | null = null;
 
 function getClient() {
-  if (!ENV.openaiApiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
-  }
-  if (!client) {
-    client = new OpenAI({ apiKey: ENV.openaiApiKey });
-  }
+  if (!ENV.openaiApiKey) return null;
+  if (!client) client = new OpenAI({ apiKey: ENV.openaiApiKey });
   return client;
 }
 
 export async function chatWithAgent(
   messages: { role: "user" | "assistant" | "system"; content: string }[],
-  userContext?: { name?: string; location?: string }
+  userContext?: { name?: string; location?: string; locale?: string }
 ) {
-  const openai = getClient();
-
-  let contextBlock = "";
-  try {
-    const [listingSample, serviceSample] = await Promise.all([
-      getListings({ limit: 5 }),
-      getServices(),
-    ]);
-
-    const listingSummary = listingSample
-      .slice(0, 5)
-      .map((l) => `- ${l.title}: RWF ${l.price} (${l.condition}, ${l.location ?? "Rwanda"})`)
-      .join("\n");
-
-    const serviceSummary = serviceSample
-      .slice(0, 5)
-      .map((s) => `- ${s.service.name}: RWF ${s.service.price} at ${s.provider.businessName}`)
-      .join("\n");
-
-    contextBlock = `\n\nLive app data:\nTrending listings:\n${listingSummary || "No listings yet"}\n\nAvailable services:\n${serviceSummary || "No services yet"}`;
-  } catch {
-    contextBlock = "";
-  }
+  const lastUser = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+  const locale: Locale = userContext?.locale && isLocale(userContext.locale) ? userContext.locale : "en";
+  const searchResults = await searchCatalogForAi(lastUser, userContext?.location);
+  const catalogContext = await buildAiCatalogContext(lastUser, searchResults);
 
   const systemContent =
     SYSTEM_PROMPT +
+    `\n${AI_LOCALE_INSTRUCTIONS[locale]}` +
     (userContext?.name ? `\nUser name: ${userContext.name}` : "") +
     (userContext?.location ? `\nUser location: ${userContext.location}` : "") +
-    contextBlock;
+    `\n\n${catalogContext}`;
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [{ role: "system", content: systemContent }, ...messages],
-    max_tokens: 800,
-    temperature: 0.7,
-  });
+  const openai = getClient();
+  if (!openai) {
+    return formatAiFallbackReply(lastUser, searchResults, userContext?.name);
+  }
 
-  return response.choices[0]?.message?.content ?? "Sorry, I couldn't generate a response. Try again! 💜";
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "system", content: systemContent }, ...messages],
+      max_tokens: 900,
+      temperature: 0.4,
+    });
+    const reply = response.choices[0]?.message?.content;
+    if (reply?.trim()) return reply;
+  } catch {
+    /* fall through to DB reply */
+  }
+
+  return formatAiFallbackReply(lastUser, searchResults, userContext?.name);
 }
 
 export async function getBeautySuggestions(query: string) {
   const openai = getClient();
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      { role: "system", content: "Return 3 short beauty/wellness search suggestions as JSON array of strings only." },
-      { role: "user", content: query },
-    ],
-    max_tokens: 150,
-    temperature: 0.8,
-  });
+  const defaults = [
+    "Find an electrician near Remera",
+    "Book a lash appointment this week",
+    "Compare massage services in Kigali",
+  ];
 
-  const text = response.choices[0]?.message?.content ?? "[]";
+  if (!openai) return defaults;
+
   try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: "Return 3 short local service search suggestions as JSON array of strings only." },
+        { role: "user", content: query },
+      ],
+      max_tokens: 150,
+      temperature: 0.8,
+    });
+    const text = response.choices[0]?.message?.content ?? "[]";
     const match = text.match(/\[[\s\S]*\]/);
-    return match ? (JSON.parse(match[0]) as string[]) : [];
+    return match ? (JSON.parse(match[0]) as string[]) : defaults;
   } catch {
-    return ["Glow-up skincare routine", "Braids near me", "Pre-loved makeup deals"];
+    return defaults;
   }
 }

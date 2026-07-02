@@ -4,6 +4,7 @@ import {
   Alert,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -37,6 +38,7 @@ export default function ItemDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [offerAmount, setOfferAmount] = useState("");
   const [showOffer, setShowOffer] = useState(false);
+  const [buying, setBuying] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -65,6 +67,36 @@ export default function ItemDetailScreen() {
     } catch (e) {
       Alert.alert("Error", e instanceof Error ? e.message : "Failed to send offer");
     }
+  };
+
+  const buyNow = async () => {
+    if (!item) return;
+    setBuying(true);
+    try {
+      const result = await trpcCall<{ payment: { status: string; externalReference: string } }>(
+        "commerce.buyNow",
+        { listingId: item.id, provider: "demo" },
+        "mutation"
+      );
+      Alert.alert(
+        result.payment.status === "succeeded" ? "Payment complete" : "Payment requested",
+        result.payment.status === "succeeded"
+          ? "The item is reserved for you with Hafi buyer protection."
+          : `Reference: ${result.payment.externalReference}`
+      );
+    } catch (e) {
+      Alert.alert("Checkout failed", e instanceof Error ? e.message : "Could not start checkout");
+    } finally {
+      setBuying(false);
+    }
+  };
+
+  const shareListing = async () => {
+    if (!item) return;
+    await Share.share({
+      title: item.title,
+      message: `Check this Hafi listing: ${item.title} - RWF ${Number(item.price).toLocaleString()}`,
+    });
   };
 
   if (loading || !item) {
@@ -99,6 +131,11 @@ export default function ItemDetailScreen() {
         {item.originalPrice && (
           <Text style={styles.original}>{formatPrice(item.originalPrice)}</Text>
         )}
+
+        <Pressable style={styles.shareBtn} onPress={shareListing}>
+          <Ionicons name="share-social-outline" size={18} color={colors.purple} />
+          <Text style={styles.shareText}>Share listing</Text>
+        </Pressable>
 
         <View style={styles.sellerCard}>
           <View style={styles.sellerAvatar}>
@@ -154,9 +191,9 @@ export default function ItemDetailScreen() {
                 <Text style={styles.secondaryText}>Make Offer</Text>
               </Pressable>
             )}
-            <Pressable style={{ flex: 1 }} onPress={() => Alert.alert("Buy", "Payment via MTN MoMo coming soon! 🔜")}>
+            <Pressable style={{ flex: 1 }} onPress={buyNow} disabled={buying}>
               <LinearGradient colors={[colors.gold, colors.goldLight]} style={styles.cta}>
-                <Text style={styles.ctaText}>Buy Now — Escrow</Text>
+                <Text style={styles.ctaText}>{buying ? "Processing..." : "Buy Now - Escrow"}</Text>
               </LinearGradient>
             </Pressable>
           </View>
@@ -180,6 +217,8 @@ const styles = StyleSheet.create({
   brand: { color: colors.gray400, marginTop: 4 },
   price: { fontSize: 26, fontWeight: "900", color: colors.purple, marginTop: spacing.sm },
   original: { fontSize: 14, color: colors.gray400, textDecorationLine: "line-through" },
+  shareBtn: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.sm, alignSelf: "flex-start", backgroundColor: colors.purpleBg, borderRadius: radius.full, paddingHorizontal: 12, paddingVertical: 8 },
+  shareText: { color: colors.purple, fontWeight: "700", fontSize: 12 },
   sellerCard: { flexDirection: "row", alignItems: "center", backgroundColor: colors.purpleBg, borderRadius: radius.xl, padding: spacing.md, marginTop: spacing.md, gap: spacing.md },
   sellerAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.purple, alignItems: "center", justifyContent: "center" },
   sellerInitial: { color: colors.white, fontWeight: "900", fontSize: 20 },

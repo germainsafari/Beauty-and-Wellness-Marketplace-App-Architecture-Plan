@@ -12,21 +12,25 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
+import type { TranslationKey } from "@hafi/i18n";
+import { useLocale, useT } from "@hafi/i18n";
 import { useAuth } from "../context/AuthContext";
 import { trpcCall } from "../lib/api";
 import { colors, radius, spacing } from "../theme";
 
 type AiMessage = { id: number; role: string; content: string; createdAt: string };
 
-const QUICK_PROMPTS = [
-  "Best skincare routine for oily skin?",
-  "Find me braiding salons near Kigali",
-  "What pre-loved makeup deals are trending?",
-  "Help me negotiate a marketplace offer",
+const PROMPT_KEYS: TranslationKey[] = [
+  "ai.prompt.electrician",
+  "ai.prompt.mechanic",
+  "ai.prompt.cleaning",
+  "ai.prompt.offer",
 ];
 
 export default function AIChatScreen() {
   const { user } = useAuth();
+  const { locale } = useLocale();
+  const t = useT();
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [messages, setMessages] = useState<AiMessage[]>([]);
   const [input, setInput] = useState("");
@@ -42,7 +46,7 @@ export default function AIChatScreen() {
         const msgs = await trpcCall<AiMessage[]>("ai.messages", { sessionId: sessions[0].id });
         setMessages(msgs);
       } else {
-        const session = await trpcCall<{ id: number }>("ai.createSession", {}, "mutation");
+        const session = await trpcCall<{ id: number }>("ai.createSession", { locale }, "mutation");
         setSessionId(session.id);
         const msgs = await trpcCall<AiMessage[]>("ai.messages", { sessionId: session.id });
         setMessages(msgs);
@@ -52,7 +56,7 @@ export default function AIChatScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [locale]);
 
   useEffect(() => { initSession(); }, [initSession]);
 
@@ -73,7 +77,7 @@ export default function AIChatScreen() {
     try {
       const result = await trpcCall<{ reply: string }>(
         "ai.chat",
-        { sessionId, message: msg },
+        { sessionId, message: msg, locale },
         "mutation"
       );
       setMessages((prev) => [
@@ -112,18 +116,20 @@ export default function AIChatScreen() {
             <Ionicons name="sparkles" size={24} color={colors.white} />
           </View>
           <View>
-            <Text style={styles.headerTitle}>Hafi AI</Text>
-            <Text style={styles.headerSub}>Your beauty concierge 💜</Text>
+            <Text style={styles.headerTitle}>{t("ai.title")}</Text>
+            <Text style={styles.headerSub}>{t("ai.subtitle")}</Text>
           </View>
         </View>
-        <Text style={styles.headerGreeting}>Hey {user?.name?.split(" ")[0]}! How can I help you glow today?</Text>
+        <Text style={styles.headerGreeting}>
+          {t("home.greeting")} {user?.name?.split(" ")[0]}! {t("ai.greeting")}
+        </Text>
       </LinearGradient>
 
       {messages.length <= 1 && (
         <View style={styles.prompts}>
-          {QUICK_PROMPTS.map((p) => (
-            <Pressable key={p} style={styles.promptChip} onPress={() => send(p)}>
-              <Text style={styles.promptText}>{p}</Text>
+          {PROMPT_KEYS.map((key) => (
+            <Pressable key={key} style={styles.promptChip} onPress={() => send(t(key))}>
+              <Text style={styles.promptText}>{t(key)}</Text>
             </Pressable>
           ))}
         </View>
@@ -152,7 +158,7 @@ export default function AIChatScreen() {
       <View style={styles.inputRow}>
         <TextInput
           style={styles.input}
-          placeholder="Ask about beauty, bookings, marketplace..."
+          placeholder={t("ai.inputPlaceholder")}
           placeholderTextColor={colors.gray400}
           value={input}
           onChangeText={setInput}

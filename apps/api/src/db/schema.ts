@@ -24,6 +24,11 @@ export const bookingStatusEnum = pgEnum("booking_status", [
 export const offerStatusEnum = pgEnum("offer_status", ["pending", "accepted", "declined", "countered"]);
 export const conversationTypeEnum = pgEnum("conversation_type", ["booking", "listing", "general", "ai"]);
 export const messageTypeEnum = pgEnum("message_type", ["text", "image", "offer_card", "booking_card", "ai"]);
+export const verificationStatusEnum = pgEnum("verification_status", ["pending", "approved", "rejected"]);
+export const paymentProviderEnum = pgEnum("payment_provider", ["mtn_momo", "airtel_money", "stripe", "demo"]);
+export const paymentStatusEnum = pgEnum("payment_status", ["pending", "processing", "succeeded", "failed", "refunded"]);
+export const orderStatusEnum = pgEnum("order_status", ["pending_payment", "paid", "ready_for_pickup", "completed", "cancelled", "disputed", "refunded"]);
+export const paymentPurposeEnum = pgEnum("payment_purpose", ["booking", "order", "boost"]);
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -37,6 +42,7 @@ export const users = pgTable("users", {
   isVerified: boolean("is_verified").default(false).notNull(),
   loyaltyPoints: integer("loyalty_points").default(0).notNull(),
   walletBalance: decimal("wallet_balance", { precision: 12, scale: 2 }).default("0.00").notNull(),
+  preferences: jsonb("preferences").$type<{ defaultPaymentProvider?: string }>().default({}).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -145,6 +151,99 @@ export const messages = pgTable("messages", {
   type: messageTypeEnum("type").default("text").notNull(),
   metadata: jsonb("metadata"),
   isRead: boolean("is_read").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const verificationRequests = pgTable("verification_requests", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  documentType: varchar("document_type", { length: 50 }).default("national_id").notNull(),
+  documentUrl: text("document_url").notNull(),
+  status: verificationStatusEnum("status").default("pending").notNull(),
+  rejectionReason: text("rejection_reason"),
+  reviewedById: integer("reviewed_by_id").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const payments = pgTable("payments", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  provider: paymentProviderEnum("provider").default("demo").notNull(),
+  purpose: paymentPurposeEnum("purpose").notNull(),
+  referenceId: integer("reference_id"),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 8 }).default("RWF").notNull(),
+  status: paymentStatusEnum("status").default("pending").notNull(),
+  externalReference: varchar("external_reference", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const orders = pgTable("orders", {
+  id: serial("id").primaryKey(),
+  listingId: integer("listing_id").references(() => listings.id).notNull(),
+  buyerId: integer("buyer_id").references(() => users.id).notNull(),
+  sellerId: integer("seller_id").references(() => users.id).notNull(),
+  paymentId: integer("payment_id").references(() => payments.id),
+  subtotal: decimal("subtotal", { precision: 12, scale: 2 }).notNull(),
+  protectionFee: decimal("protection_fee", { precision: 12, scale: 2 }).default("0.00").notNull(),
+  discountAmount: decimal("discount_amount", { precision: 12, scale: 2 }).default("0.00").notNull(),
+  totalAmount: decimal("total_amount", { precision: 12, scale: 2 }).notNull(),
+  status: orderStatusEnum("status").default("pending_payment").notNull(),
+  pickupLocation: varchar("pickup_location", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const boosts = pgTable("boosts", {
+  id: serial("id").primaryKey(),
+  listingId: integer("listing_id").references(() => listings.id).notNull(),
+  sellerId: integer("seller_id").references(() => users.id).notNull(),
+  paymentId: integer("payment_id").references(() => payments.id),
+  startsAt: timestamp("starts_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const bundleRules = pgTable("bundle_rules", {
+  id: serial("id").primaryKey(),
+  sellerId: integer("seller_id").references(() => users.id).notNull(),
+  minItems: integer("min_items").default(2).notNull(),
+  discountPercent: integer("discount_percent").default(10).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const loyaltyLedger = pgTable("loyalty_ledger", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  points: integer("points").notNull(),
+  reason: varchar("reason", { length: 100 }).notNull(),
+  referenceType: varchar("reference_type", { length: 50 }),
+  referenceId: integer("reference_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const pushTokens = pgTable("push_tokens", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  platform: varchar("platform", { length: 30 }).notNull(),
+  token: text("token").notNull(),
+  enabled: boolean("enabled").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const adminActions = pgTable("admin_actions", {
+  id: serial("id").primaryKey(),
+  adminId: integer("admin_id").references(() => users.id).notNull(),
+  action: varchar("action", { length: 100 }).notNull(),
+  targetType: varchar("target_type", { length: 50 }).notNull(),
+  targetId: integer("target_id").notNull(),
+  metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

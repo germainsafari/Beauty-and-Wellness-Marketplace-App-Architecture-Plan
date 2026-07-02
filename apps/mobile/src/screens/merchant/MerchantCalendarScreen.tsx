@@ -7,7 +7,7 @@ export default function MerchantCalendarScreen() {
   const [bookings, setBookings] = useState<any[]>([]);
 
   useEffect(() => {
-    trpcCall("merchant.calendar").then(setBookings).catch(() => {});
+    trpcCall<any[]>("merchant.calendar").then(setBookings).catch(() => {});
   }, []);
 
   return (
@@ -26,7 +26,7 @@ export default function MerchantCalendarScreen() {
             <View style={styles.row}>
               <Text style={styles.status}>{item.status}</Text>
               {item.status === "pending" && (
-                <Pressable onPress={() => trpcCall("merchant.updateBookingStatus", { id: item.id, status: "confirmed" }, "mutation").then(() => trpcCall("merchant.calendar").then(setBookings))}>
+                <Pressable onPress={() => trpcCall("merchant.updateBookingStatus", { id: item.id, status: "confirmed" }, "mutation").then(() => trpcCall<any[]>("merchant.calendar").then(setBookings))}>
                   <Text style={styles.confirm}>Confirm</Text>
                 </Pressable>
               )}

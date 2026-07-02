@@ -6,15 +6,23 @@ config({ path: resolve(process.cwd(), "../../.env") });
 
 import { db } from "./index.js";
 import {
+  boosts,
+  bundleRules,
   listings,
+  loyaltyLedger,
+  orders,
+  payments,
   providerProfiles,
+  pushTokens,
   serviceCategories,
   services,
   users,
+  verificationRequests,
 } from "./schema.js";
 import { eq } from "drizzle-orm";
 import { insertMerchantDemoData } from "./seed-demo-data.js";
 import { insertClientDemoData } from "./seed-client-data.js";
+import { insertExtraServicesData } from "./seed-extra-services.js";
 
 const IMAGES = [
   "https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=400&q=80",
@@ -34,7 +42,7 @@ async function seed() {
     process.exit(0);
   }
 
-  const [amara, zara, lux, bella] = await db
+  const [amara, zara, lux, bella, admin] = await db
     .insert(users)
     .values([
       {
@@ -77,6 +85,16 @@ async function seed() {
         loyaltyPoints: 890,
         bio: "Beauty blogger & collector 🌸",
         avatarUrl: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&q=80",
+      },
+      {
+        name: "Hafi Admin",
+        phone: "+250780000000",
+        location: "Kigali, Rwanda",
+        role: "admin",
+        isVerified: true,
+        walletBalance: "0.00",
+        loyaltyPoints: 0,
+        bio: "Hafi operations account",
       },
     ])
     .returning();
@@ -252,6 +270,90 @@ async function seed() {
     },
   ]).returning();
 
+  const [demoOrderPayment] = await db
+    .insert(payments)
+    .values({
+      userId: zara.id,
+      provider: "demo",
+      purpose: "order",
+      amount: "12600.00",
+      currency: "RWF",
+      status: "succeeded",
+      externalReference: "demo_paid_order_001",
+      phone: zara.phone,
+    })
+    .returning();
+
+  await db.insert(orders).values({
+    listingId: insertedListings[0].id,
+    buyerId: zara.id,
+    sellerId: amara.id,
+    paymentId: demoOrderPayment.id,
+    subtotal: "12000.00",
+    protectionFee: "600.00",
+    discountAmount: "0.00",
+    totalAmount: "12600.00",
+    status: "paid",
+    pickupLocation: "Kimihurura, Kigali",
+  });
+
+  const boostExpiresAt = new Date(Date.now() + 7 * 86400000);
+  const [boostPayment] = await db
+    .insert(payments)
+    .values({
+      userId: lux.id,
+      provider: "demo",
+      purpose: "boost",
+      referenceId: insertedListings[1].id,
+      amount: "7000.00",
+      currency: "RWF",
+      status: "succeeded",
+      externalReference: "demo_boost_001",
+      phone: lux.phone,
+    })
+    .returning();
+
+  await db.insert(boosts).values({
+    listingId: insertedListings[1].id,
+    sellerId: lux.id,
+    paymentId: boostPayment.id,
+    expiresAt: boostExpiresAt,
+  });
+  await db.update(listings).set({ isBumped: true, bumpedUntil: boostExpiresAt }).where(eq(listings.id, insertedListings[1].id));
+
+  await db.insert(bundleRules).values([
+    { sellerId: amara.id, minItems: 2, discountPercent: 10 },
+    { sellerId: lux.id, minItems: 2, discountPercent: 15 },
+  ]);
+
+  await db.insert(verificationRequests).values([
+    {
+      userId: bella.id,
+      documentType: "national_id",
+      documentUrl: "https://example.com/demo/bella-national-id.jpg",
+      status: "pending",
+    },
+    {
+      userId: amara.id,
+      documentType: "business_registration",
+      documentUrl: "https://example.com/demo/amara-business-registration.pdf",
+      status: "approved",
+      reviewedById: admin.id,
+      reviewedAt: new Date(),
+    },
+  ]);
+
+  await db.insert(loyaltyLedger).values([
+    { userId: zara.id, points: 25, reason: "order_paid", referenceType: "order", referenceId: 1 },
+    { userId: bella.id, points: 50, reason: "review_submitted", referenceType: "booking", referenceId: 1 },
+    { userId: amara.id, points: 100, reason: "verified_merchant", referenceType: "verification", referenceId: 2 },
+  ]);
+
+  await db.insert(pushTokens).values([
+    { userId: zara.id, platform: "expo", token: "ExponentPushToken[demo-zara]" },
+    { userId: amara.id, platform: "web", token: "demo-web-token-amara" },
+  ]);
+
   const insertedServices = await db
     .select()
     .from(services)
@@ -280,10 +382,13 @@ async function seed() {
     listingIds: insertedListings.slice(0, 3).map((l) => l.id),
   });
 
+  await insertExtraServicesData();
+
   console.log("✅ Seed complete!");
-  console.log(`   Users: 4 | Services: 5 | Listings: 6 | Bookings: 6 | Offers: 4`);
+  console.log(`   Users: 5+ | Services: 19+ | Listings: 9+ | Bookings: 6 | Offers: 4`);
   console.log("   Client: Zara +250780000002 | Bella +250780000004");
   console.log("   Merchant: Amara +250780000001 | Lux +250780000003");
+  console.log("   Admin: Hafi Admin +250780000000");
   process.exit(0);
 }
 

@@ -1,7 +1,12 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Dimensions,
+  FlatList,
+  ImageBackground,
   KeyboardAvoidingView,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -13,25 +18,63 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth, type UserRole } from "../context/AuthContext";
+import { DEMO_ACCOUNTS, ONBOARDING_SLIDES } from "../lib/onboarding";
+import LanguageSwitcher from "../components/LanguageSwitcher";
+import { useT } from "@hafi/i18n";
 import { colors, radius, spacing } from "../theme";
 
+const { width: SCREEN_W } = Dimensions.get("window");
+
 export default function WelcomeScreen() {
-  const { login } = useAuth();
+  const { login, signIn } = useAuth();
+  const t = useT();
+  const [slideIndex, setSlideIndex] = useState(0);
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [role, setRole] = useState<UserRole>("customer");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("+250");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const slideRef = useRef<FlatList>(null);
 
-  const handleLogin = async () => {
-    if (name.length < 2 || phone.length < 8) {
-      setError("Enter your name and phone number");
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSlideIndex((i) => {
+        const next = (i + 1) % ONBOARDING_SLIDES.length;
+        slideRef.current?.scrollToIndex({ index: next, animated: true });
+        return next;
+      });
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const onSlideScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const i = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+    if (i !== slideIndex) setSlideIndex(i);
+  };
+
+  const submit = async () => {
+    if (phone.length < 8 || (mode === "signup" && name.length < 2)) {
+      setError(mode === "signin" ? "Enter your phone number" : "Enter your name and phone");
       return;
     }
     setLoading(true);
     setError("");
     try {
-      await login(name.trim(), phone.trim(), role);
+      if (mode === "signin") await signIn(phone.trim());
+      else await login(name.trim(), phone.trim(), role);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const demoSignIn = async (demoPhone: string) => {
+    setLoading(true);
+    setError("");
+    try {
+      await signIn(demoPhone);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Login failed");
     } finally {
@@ -40,97 +83,142 @@ export default function WelcomeScreen() {
   };
 
   return (
-    <LinearGradient colors={[colors.purpleDark, colors.purpleMid, "#4A1A8C"]} style={styles.container}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
-          <View style={styles.logoBox}>
-            <Text style={styles.logoText}>H</Text>
-          </View>
-          <Text style={styles.title}>Welcome to Hafi</Text>
-          <Text style={styles.subtitle}>How will you use Hafi?</Text>
+    <View style={styles.root}>
+      <FlatList
+        ref={slideRef}
+        data={ONBOARDING_SLIDES}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={onSlideScroll}
+        keyExtractor={(item) => item.id}
+        style={styles.carousel}
+        renderItem={({ item }) => (
+          <ImageBackground source={{ uri: item.image }} style={styles.slide} resizeMode="cover">
+            <LinearGradient colors={["transparent", "rgba(26,5,51,0.85)", colors.purpleDark]} style={styles.slideGradient}>
+              <View style={styles.logoRow}>
+                <View style={styles.logoBox}>
+                  <Text style={styles.logoText}>H</Text>
+                </View>
+                <Text style={styles.logoLabel}>Hafi</Text>
+              </View>
+              <Text style={styles.slideTitle}>{t(item.titleKey)}</Text>
+              <Text style={styles.slideSub}>{t(item.subtitleKey)}</Text>
+            </LinearGradient>
+          </ImageBackground>
+        )}
+      />
+      <View style={styles.dots}>
+        {ONBOARDING_SLIDES.map((_, i) => (
+          <View key={i} style={[styles.dot, i === slideIndex && styles.dotActive]} />
+        ))}
+      </View>
 
-          <View style={styles.roleRow}>
-            <Pressable
-              style={[styles.roleCard, role === "customer" && styles.roleCardActive]}
-              onPress={() => setRole("customer")}
-            >
-              <Ionicons name="calendar" size={28} color={role === "customer" ? colors.purple : colors.gray400} />
-              <Text style={[styles.roleTitle, role === "customer" && styles.roleTitleActive]}>Client</Text>
-              <Text style={styles.roleDesc}>Book salons & shop</Text>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.sheet}>
+        <ScrollView contentContainerStyle={styles.sheetInner} keyboardShouldPersistTaps="handled">
+          <View style={styles.modeRow}>
+            <Pressable style={[styles.modeBtn, mode === "signin" && styles.modeBtnActive]} onPress={() => setMode("signin")}>
+              <Text style={[styles.modeText, mode === "signin" && styles.modeTextActive]}>{t("common.signIn")}</Text>
             </Pressable>
-            <Pressable
-              style={[styles.roleCard, role === "provider" && styles.roleCardMerchant]}
-              onPress={() => setRole("provider")}
-            >
-              <Ionicons name="storefront" size={28} color={role === "provider" ? colors.gold : colors.gray400} />
-              <Text style={[styles.roleTitle, role === "provider" && styles.roleTitleMerchant]}>Merchant</Text>
-              <Text style={styles.roleDesc}>Run your business</Text>
+            <Pressable style={[styles.modeBtn, mode === "signup" && styles.modeBtnActive]} onPress={() => setMode("signup")}>
+              <Text style={[styles.modeText, mode === "signup" && styles.modeTextActive]}>{t("common.createAccount")}</Text>
             </Pressable>
           </View>
 
-          <View style={styles.form}>
-            <Text style={styles.demoHint}>Demo accounts — tap to fill</Text>
-            <View style={styles.demoRow}>
-              <Pressable
-                style={styles.demoChip}
-                onPress={() => {
-                  setRole("customer");
-                  setName("Zara Glow");
-                  setPhone("+250780000002");
-                }}
-              >
-                <Text style={styles.demoChipText}>Client: Zara</Text>
+          {mode === "signup" && (
+            <View style={styles.roleRow}>
+              <Pressable style={[styles.roleCard, role === "customer" && styles.roleCardActive]} onPress={() => setRole("customer")}>
+                <Ionicons name="calendar" size={24} color={role === "customer" ? colors.purple : colors.gray400} />
+                <Text style={[styles.roleTitle, role === "customer" && styles.roleTitleActive]}>{t("common.client")}</Text>
               </Pressable>
-              <Pressable
-                style={styles.demoChip}
-                onPress={() => {
-                  setRole("provider");
-                  setName("Amara Beauty");
-                  setPhone("+250780000001");
-                }}
-              >
-                <Text style={styles.demoChipText}>Merchant: Amara</Text>
+              <Pressable style={[styles.roleCard, role === "provider" && styles.roleCardMerchant]} onPress={() => setRole("provider")}>
+                <Ionicons name="storefront" size={24} color={role === "provider" ? colors.gold : colors.gray400} />
+                <Text style={[styles.roleTitle, role === "provider" && styles.roleTitleMerchant]}>{t("common.merchant")}</Text>
               </Pressable>
             </View>
-            <TextInput style={styles.input} placeholder="Your name" placeholderTextColor={colors.gray400} value={name} onChangeText={setName} />
-            <TextInput style={styles.input} placeholder="+250 7XX XXX XXX" placeholderTextColor={colors.gray400} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-            <Pressable onPress={handleLogin} disabled={loading}>
-              <LinearGradient colors={role === "provider" ? [colors.gold, colors.goldLight] : [colors.purple, colors.purpleLight]} style={styles.cta}>
-                {loading ? <ActivityIndicator color={colors.white} /> : (
-                  <Text style={styles.ctaText}>{role === "provider" ? "Open Merchant App" : "Enter as Client"}</Text>
-                )}
-              </LinearGradient>
-            </Pressable>
-          </View>
+          )}
+
+          <LanguageSwitcher />
+
+          {mode === "signin" && (
+            <>
+              <Text style={styles.demoHint}>{t("auth.demoTap")}</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.demoScroll}>
+                {DEMO_ACCOUNTS.map((d) => (
+                  <Pressable key={d.phone} style={styles.demoChip} onPress={() => demoSignIn(d.phone)}>
+                    <Text style={styles.demoChipLabel}>{d.label}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </>
+          )}
+
+          {mode === "signup" && (
+            <TextInput style={styles.input} placeholder={t("auth.namePlaceholder")} placeholderTextColor={colors.gray400} value={name} onChangeText={setName} />
+          )}
+          <TextInput
+            style={styles.input}
+            placeholder={t("auth.phonePlaceholder")}
+            placeholderTextColor={colors.gray400}
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+          />
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <Pressable onPress={submit} disabled={loading}>
+            <LinearGradient
+              colors={role === "provider" && mode === "signup" ? [colors.gold, colors.goldLight] : [colors.purple, colors.purpleLight]}
+              style={styles.cta}
+            >
+              {loading ? (
+                <ActivityIndicator color={colors.white} />
+              ) : (
+                <Text style={styles.ctaText}>{mode === "signin" ? t("common.signIn") : t("common.createAccount")}</Text>
+              )}
+            </LinearGradient>
+          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
-    </LinearGradient>
+    </View>
   );
 }
 
+const SLIDE_H = 280;
+
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  inner: { flexGrow: 1, justifyContent: "center", padding: spacing.lg, alignItems: "center" },
-  logoBox: { width: 72, height: 72, borderRadius: radius.xl, backgroundColor: colors.purpleLight, alignItems: "center", justifyContent: "center", marginBottom: spacing.md },
-  logoText: { fontSize: 36, fontWeight: "900", color: colors.white },
-  title: { fontSize: 28, fontWeight: "900", color: colors.white, marginBottom: spacing.xs },
-  subtitle: { fontSize: 15, color: "#C4B5FD", marginBottom: spacing.lg },
-  roleRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.lg, width: "100%", maxWidth: 340 },
-  roleCard: { flex: 1, backgroundColor: "rgba(255,255,255,0.12)", borderRadius: radius.xl, padding: spacing.md, alignItems: "center", borderWidth: 2, borderColor: "transparent" },
-  roleCardActive: { backgroundColor: "rgba(255,255,255,0.95)", borderColor: colors.purple },
-  roleCardMerchant: { backgroundColor: "rgba(255,255,255,0.95)", borderColor: colors.gold },
-  roleTitle: { fontWeight: "800", color: colors.gray400, marginTop: spacing.sm, fontSize: 15 },
+  root: { flex: 1, backgroundColor: colors.purpleDark },
+  carousel: { maxHeight: SLIDE_H },
+  slide: { width: SCREEN_W, height: SLIDE_H },
+  slideGradient: { flex: 1, justifyContent: "flex-end", padding: spacing.lg, paddingBottom: spacing.xl },
+  logoRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
+  logoBox: { width: 36, height: 36, borderRadius: radius.md, backgroundColor: "rgba(255,255,255,0.25)", alignItems: "center", justifyContent: "center" },
+  logoText: { fontSize: 20, fontWeight: "900", color: colors.white },
+  logoLabel: { color: colors.white, fontWeight: "800", fontSize: 16 },
+  slideTitle: { fontSize: 26, fontWeight: "900", color: colors.white, lineHeight: 30 },
+  slideSub: { fontSize: 14, color: "#DDD6FE", marginTop: spacing.sm, lineHeight: 20 },
+  dots: { flexDirection: "row", justifyContent: "center", gap: 6, paddingVertical: spacing.sm, backgroundColor: colors.purpleDark },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.35)" },
+  dotActive: { width: 20, backgroundColor: colors.white },
+  sheet: { flex: 1, backgroundColor: colors.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, marginTop: -12 },
+  sheetInner: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
+  modeRow: { flexDirection: "row", backgroundColor: colors.purpleBg, borderRadius: radius.xl, padding: 4, marginBottom: spacing.md },
+  modeBtn: { flex: 1, alignItems: "center", paddingVertical: 10, borderRadius: radius.lg },
+  modeBtnActive: { backgroundColor: colors.white },
+  modeText: { color: colors.gray400, fontWeight: "800" },
+  modeTextActive: { color: colors.purple },
+  roleRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md },
+  roleCard: { flex: 1, backgroundColor: colors.purpleBg, borderRadius: radius.xl, padding: spacing.md, alignItems: "center", borderWidth: 2, borderColor: "transparent" },
+  roleCardActive: { borderColor: colors.purple, backgroundColor: "#F5F3FF" },
+  roleCardMerchant: { borderColor: colors.gold, backgroundColor: "#FFFBEB" },
+  roleTitle: { fontWeight: "800", color: colors.gray400, marginTop: 6, fontSize: 14 },
   roleTitleActive: { color: colors.purple },
   roleTitleMerchant: { color: colors.gold },
-  roleDesc: { fontSize: 11, color: colors.gray400, marginTop: 2, textAlign: "center" },
-  form: { width: "100%", maxWidth: 340, gap: spacing.sm },
-  demoHint: { color: "#C4B5FD", fontSize: 12, textAlign: "center", marginBottom: 4 },
-  demoRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.xs },
-  demoChip: { flex: 1, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: radius.lg, paddingVertical: 8, paddingHorizontal: 6, alignItems: "center" },
-  demoChipText: { color: colors.white, fontSize: 11, fontWeight: "700" },
-  input: { backgroundColor: "rgba(255,255,255,0.95)", borderRadius: radius.lg, padding: spacing.md, fontSize: 16, color: colors.gray800 },
-  error: { color: "#FCA5A5", fontSize: 13, textAlign: "center" },
+  demoHint: { color: colors.gray400, fontSize: 12, marginBottom: spacing.xs },
+  demoScroll: { marginBottom: spacing.sm, maxHeight: 44 },
+  demoChip: { backgroundColor: colors.purpleBg, borderRadius: radius.full, paddingHorizontal: 14, paddingVertical: 8, marginRight: spacing.sm },
+  demoChipLabel: { color: colors.purple, fontWeight: "700", fontSize: 12 },
+  input: { backgroundColor: colors.purpleBg, borderRadius: radius.lg, padding: spacing.md, fontSize: 16, color: colors.gray800, marginBottom: spacing.sm },
+  error: { color: colors.rose, fontSize: 13, textAlign: "center", marginBottom: spacing.sm },
   cta: { borderRadius: radius.xl, paddingVertical: 16, alignItems: "center", marginTop: spacing.sm },
   ctaText: { color: colors.white, fontSize: 17, fontWeight: "800" },
 });

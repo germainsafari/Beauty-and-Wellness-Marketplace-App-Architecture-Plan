@@ -41,7 +41,7 @@ export default function CreateListingScreen() {
         location: user?.location || "Kigali",
         isNegotiable: true,
         images: ["https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=400&q=80"],
-        tags: ["beauty"],
+        tags: ["local", "marketplace"],
       }, "mutation");
       Alert.alert("Listed! 🎉", "Your item is now live on the marketplace.");
       setTitle("");
@@ -58,7 +58,7 @@ export default function CreateListingScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Sell on Hafi</Text>
-      <Text style={styles.subtitle}>List your pre-loved beauty gems ✨</Text>
+      <Text style={styles.subtitle}>List products, tools, parts, supplies, or inventory</Text>
 
       <View style={styles.photoPlaceholder}>
         <Ionicons name="camera" size={32} color={colors.purple} />
@@ -67,7 +67,7 @@ export default function CreateListingScreen() {
       </View>
 
       <Text style={styles.label}>Title *</Text>
-      <TextInput style={styles.input} placeholder="e.g. MAC Ruby Woo Lipstick" value={title} onChangeText={setTitle} />
+      <TextInput style={styles.input} placeholder="e.g. Drill set, spare part, salon chair" value={title} onChangeText={setTitle} />
 
       <Text style={styles.label}>Brand</Text>
       <TextInput style={styles.input} placeholder="Brand name" value={brand} onChangeText={setBrand} />
