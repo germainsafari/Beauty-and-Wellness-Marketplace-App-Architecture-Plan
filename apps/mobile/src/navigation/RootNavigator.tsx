@@ -7,7 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../context/AuthContext";
 import { useT } from "@hafi/i18n";
 import { colors } from "../theme";
-import type { RootStackParamList } from "./types";
+import type { MerchantTabParamList, RootStackParamList } from "./types";
 
 import WelcomeScreen from "../screens/WelcomeScreen";
 import HomeScreen from "../screens/HomeScreen";
@@ -20,13 +20,18 @@ import MessagesScreen from "../screens/MessagesScreen";
 import ChatThreadScreen from "../screens/ChatThreadScreen";
 import ItemDetailScreen from "../screens/ItemDetailScreen";
 import CreateListingScreen from "../screens/CreateListingScreen";
+import SavedListingsScreen from "../screens/SavedListingsScreen";
 import MerchantDashboardScreen from "../screens/merchant/MerchantDashboardScreen";
 import MerchantCalendarScreen from "../screens/merchant/MerchantCalendarScreen";
 import MerchantListingsScreen from "../screens/merchant/MerchantListingsScreen";
+import MerchantServicesScreen from "../screens/merchant/MerchantServicesScreen";
+import MerchantMenuScreen from "../screens/merchant/MerchantMenuScreen";
+import MerchantOffersScreen from "../screens/merchant/MerchantOffersScreen";
+import MerchantAnalyticsScreen from "../screens/merchant/MerchantAnalyticsScreen";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const ClientTab = createBottomTabNavigator();
-const MerchantTab = createBottomTabNavigator();
+const MerchantTab = createBottomTabNavigator<MerchantTabParamList>();
 
 function ClientTabs() {
   const t = useT();
@@ -53,6 +58,7 @@ function ClientTabs() {
 }
 
 function MerchantTabs() {
+  const t = useT();
   return (
     <MerchantTab.Navigator screenOptions={({ route }) => ({
       headerShown: false,
@@ -60,23 +66,28 @@ function MerchantTabs() {
       tabBarInactiveTintColor: colors.gray400,
       tabBarStyle: { backgroundColor: colors.purpleDark },
       tabBarIcon: ({ color, size }) => {
-        const icons: Record<string, keyof typeof Ionicons.glyphMap> = {
-          Dashboard: "grid", Calendar: "calendar", Listings: "pricetags", Messages: "chatbubble-ellipses", Profile: "person",
+        const icons: Record<keyof MerchantTabParamList, keyof typeof Ionicons.glyphMap> = {
+          Dashboard: "grid",
+          Calendar: "calendar",
+          Services: "briefcase",
+          Listings: "pricetags",
+          Menu: "menu",
         };
-        return <Ionicons name={icons[route.name]} size={size} color={color} />;
+        return <Ionicons name={icons[route.name as keyof MerchantTabParamList]} size={size} color={color} />;
       },
     })}>
-      <MerchantTab.Screen name="Dashboard" component={MerchantDashboardScreen} />
-      <MerchantTab.Screen name="Calendar" component={MerchantCalendarScreen} />
-      <MerchantTab.Screen name="Listings" component={MerchantListingsScreen} />
-      <MerchantTab.Screen name="Messages" component={MessagesScreen} />
-      <MerchantTab.Screen name="Profile" component={ProfileScreen} />
+      <MerchantTab.Screen name="Dashboard" component={MerchantDashboardScreen} options={{ tabBarLabel: t("merchant.nav.dashboard") }} />
+      <MerchantTab.Screen name="Calendar" component={MerchantCalendarScreen} options={{ tabBarLabel: t("merchant.nav.calendar") }} />
+      <MerchantTab.Screen name="Services" component={MerchantServicesScreen} options={{ tabBarLabel: t("merchant.nav.services") }} />
+      <MerchantTab.Screen name="Listings" component={MerchantListingsScreen} options={{ tabBarLabel: t("merchant.nav.listings") }} />
+      <MerchantTab.Screen name="Menu" component={MerchantMenuScreen} options={{ tabBarLabel: t("merchant.nav.menu") }} />
     </MerchantTab.Navigator>
   );
 }
 
 export default function RootNavigator() {
   const { user, loading, activeRole } = useAuth();
+  const t = useT();
 
   if (loading) {
     return (
@@ -86,6 +97,8 @@ export default function RootNavigator() {
     );
   }
 
+  const merchantHeader = { headerShown: true as const, headerTintColor: colors.gold, headerStyle: { backgroundColor: colors.purpleDark }, headerTitleStyle: { color: colors.white, fontWeight: "700" as const } };
+
   return (
     <NavigationContainer key={`nav-${activeRole}`}>
       <Stack.Navigator key={`stack-${activeRole}`} screenOptions={{ headerShown: false }}>
@@ -94,15 +107,20 @@ export default function RootNavigator() {
         ) : activeRole === "provider" ? (
           <>
             <Stack.Screen name="Main" component={MerchantTabs} />
-            <Stack.Screen name="CreateListing" component={CreateListingScreen} options={{ headerShown: true, headerTitle: "New Listing", headerTintColor: colors.gold }} />
-            <Stack.Screen name="ChatThread" component={ChatThreadScreen} options={({ route }) => ({ headerShown: true, headerTitle: route.params.otherUserName ?? "Chat", headerTintColor: colors.gold })} />
+            <Stack.Screen name="CreateListing" component={CreateListingScreen} options={{ ...merchantHeader, headerTitle: t("merchant.createListing") }} />
+            <Stack.Screen name="ChatThread" component={ChatThreadScreen} options={({ route }) => ({ ...merchantHeader, headerTitle: route.params.otherUserName ?? "Chat" })} />
+            <Stack.Screen name="MerchantOffers" component={MerchantOffersScreen} options={{ ...merchantHeader, headerTitle: t("merchant.nav.offers") }} />
+            <Stack.Screen name="MerchantAnalytics" component={MerchantAnalyticsScreen} options={{ ...merchantHeader, headerTitle: t("merchant.nav.analytics") }} />
+            <Stack.Screen name="MerchantMessages" component={MessagesScreen} options={{ ...merchantHeader, headerTitle: t("nav.messages") }} />
+            <Stack.Screen name="MerchantProfile" component={ProfileScreen} options={{ ...merchantHeader, headerTitle: t("nav.profile") }} />
           </>
         ) : (
           <>
             <Stack.Screen name="Main" component={ClientTabs} />
             <Stack.Screen name="Discover" component={DiscoverScreen} options={{ headerShown: true, headerTintColor: colors.purple }} />
             <Stack.Screen name="ItemDetail" component={ItemDetailScreen} options={{ headerShown: true, headerTitle: "", headerTintColor: colors.purple }} />
-            <Stack.Screen name="CreateListing" component={CreateListingScreen} options={{ headerShown: true, headerTintColor: colors.purple }} />
+            <Stack.Screen name="CreateListing" component={CreateListingScreen} options={{ headerShown: true, headerTintColor: colors.purple, headerTitle: t("marketplace.sellItem") }} />
+            <Stack.Screen name="SavedListings" component={SavedListingsScreen} options={{ headerShown: true, headerTintColor: colors.purple, headerTitle: t("marketplace.savedItems") }} />
             <Stack.Screen name="ChatThread" component={ChatThreadScreen} options={({ route }) => ({ headerShown: true, headerTitle: route.params.otherUserName ?? "Chat", headerTintColor: colors.purple })} />
           </>
         )}
