@@ -284,7 +284,7 @@ export async function getServicesByProvider(userId: number) {
     })
     .from(services)
     .leftJoin(serviceCategories, eq(services.categoryId, serviceCategories.id))
-    .where(and(eq(services.providerId, profile.id), eq(services.isActive, true)))
+    .where(eq(services.providerId, profile.id))
     .orderBy(services.name);
 }
 
@@ -304,6 +304,49 @@ export async function getServices() {
 export async function getServiceById(id: number) {
   const [row] = await db.select().from(services).where(eq(services.id, id)).limit(1);
   return row ?? null;
+}
+
+export async function createService(data: {
+  providerId: number;
+  categoryId?: number | null;
+  name: string;
+  description?: string;
+  duration: number;
+  price: string;
+}) {
+  const [service] = await db
+    .insert(services)
+    .values({ ...data, isActive: true })
+    .returning();
+  return service;
+}
+
+export async function updateService(
+  id: number,
+  providerId: number,
+  data: Partial<{
+    categoryId: number | null;
+    name: string;
+    description: string | null;
+    duration: number;
+    price: string;
+    isActive: boolean;
+  }>
+) {
+  const existing = await getServiceById(id);
+  if (!existing || existing.providerId !== providerId) {
+    throw new Error("Service not found");
+  }
+  const [updated] = await db
+    .update(services)
+    .set(data)
+    .where(and(eq(services.id, id), eq(services.providerId, providerId)))
+    .returning();
+  return updated;
+}
+
+export async function deactivateService(id: number, providerId: number) {
+  return updateService(id, providerId, { isActive: false });
 }
 
 export async function getBookingsByCustomer(customerId: number) {

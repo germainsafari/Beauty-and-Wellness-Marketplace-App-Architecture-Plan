@@ -37,7 +37,9 @@ Or API + web: `npm run dev`
 ## Expo Go (SDK 54)
 
 - Upgraded to **Expo SDK 54** — compatible with current Expo Go
-- Run `npm run mobile` in an **interactive terminal** to see the QR code
+- Run `npm run mobile` in a terminal to see the QR code (scan with **Expo Go**, not the Camera app alone)
+- Phone and PC must be on the **same Wi‑Fi**; allow Node.js through Windows Firewall if prompted
+- If you see “Could not connect to development server”, wait until the terminal shows `Metro waiting on exp://…`, then tap **Reload JS** on the phone
 - `:8081` in browser = manifest JSON (normal, not the UI)
 
 ## Feature status (MVP)

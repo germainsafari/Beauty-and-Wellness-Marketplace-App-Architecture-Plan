@@ -4,7 +4,7 @@
   "private": true,
   "main": "index.js",
   "scripts": {
-    "start": "node scripts/sync-api-url.mjs && expo start --lan -c",
+    "start": "node scripts/sync-api-url.mjs && expo start --lan -c --go",
     "android": "node scripts/sync-api-url.mjs && expo start --android",
     "ios": "node scripts/sync-api-url.mjs && expo start --ios",
     "postinstall": "node scripts/create-assets.mjs"

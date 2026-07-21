@@ -1,6 +1,8 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
+  createService,
+  deactivateService,
   getOffersForSeller,
   getProviderBookingsWithCustomer,
   getProviderByUserId,
@@ -9,6 +11,7 @@ import {
   respondToOffer,
   updateBooking,
   updateProviderProfile,
+  updateService,
 } from "../../db/queries.js";
 import { protectedProcedure, router } from "../trpc.js";
 
@@ -104,6 +107,74 @@ export const merchantRouter = router({
         await updateBooking(input.id, { status: input.status }, profile.id);
       } catch {
         throw new TRPCError({ code: "NOT_FOUND", message: "Booking not found" });
+      }
+      return { success: true };
+    }),
+
+  createService: protectedProcedure
+    .input(
+      z.object({
+        name: z.string().min(2).max(255),
+        description: z.string().optional(),
+        duration: z.number().int().min(5).max(480),
+        price: z.number().positive(),
+        categoryId: z.number().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const profile = await getProviderByUserId(ctx.user.id);
+      if (!profile) throw new TRPCError({ code: "NOT_FOUND", message: "Merchant profile not found" });
+      return createService({
+        providerId: profile.id,
+        name: input.name,
+        description: input.description,
+        duration: input.duration,
+        price: String(input.price),
+        categoryId: input.categoryId ?? null,
+      });
+    }),
+
+  updateService: protectedProcedure
+    .input(
+      z.object({
+        id: z.number(),
+        name: z.string().min(2).max(255).optional(),
+        description: z.string().optional(),
+        duration: z.number().int().min(5).max(480).optional(),
+        price: z.number().positive().optional(),
+        categoryId: z.number().nullable().optional(),
+        isActive: z.boolean().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const profile = await getProviderByUserId(ctx.user.id);
+      if (!profile) throw new TRPCError({ code: "NOT_FOUND", message: "Merchant profile not found" });
+      const { id, price, ...rest } = input;
+      try {
+        return await updateService(id, profile.id, {
+          ...rest,
+          ...(price !== undefined ? { price: String(price) } : {}),
+        });
+      } catch (e) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: e instanceof Error ? e.message : "Could not update service",
+        });
+      }
+    }),
+
+  deleteService: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const profile = await getProviderByUserId(ctx.user.id);
+      if (!profile) throw new TRPCError({ code: "NOT_FOUND", message: "Merchant profile not found" });
+      try {
+        await deactivateService(input.id, profile.id);
+      } catch (e) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: e instanceof Error ? e.message : "Could not remove service",
+        });
       }
       return { success: true };
     }),
